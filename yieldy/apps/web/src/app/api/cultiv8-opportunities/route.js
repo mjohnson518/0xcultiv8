@@ -1,11 +1,17 @@
 import sql from "@/app/api/utils/sql";
 import { rateLimitMiddleware } from "@/app/api/middleware/rateLimit";
+import { validateRequest, validateQuery } from "@/app/api/middleware/validation";
+import { OpportunityCreateSchema, OpportunityQuerySchema } from "@/app/api/schemas/opportunity";
 
 // Get all cultiv8 opportunities with filtering
 export async function GET(request) {
   // Rate limiting - general tier for read operations
   const rateLimitError = await rateLimitMiddleware(request, 'general');
   if (rateLimitError) return rateLimitError;
+
+  // Validate query parameters
+  const queryValidationError = await validateQuery(OpportunityQuerySchema)(request);
+  if (queryValidationError) return queryValidationError;
 
   try {
     const { searchParams } = new URL(request.url);
@@ -66,28 +72,25 @@ export async function POST(request) {
   const rateLimitError = await rateLimitMiddleware(request, 'config');
   if (rateLimitError) return rateLimitError;
 
+  // Input validation
+  const validationError = await validateRequest(OpportunityCreateSchema)(request);
+  if (validationError) return validationError;
+
   try {
-    const body = await request.json();
+    // Use validated data (with defaults already applied by schema)
     const {
       protocol_name,
       blockchain,
       pool_address,
-      token_symbol = 'USDC',
+      token_symbol,
       apy,
       tvl,
-      risk_score = 5,
+      risk_score,
       protocol_type,
-      minimum_deposit = 0,
-      lock_period = 0,
-      additional_info = {}
-    } = body;
-
-    if (!protocol_name || !blockchain || !pool_address || !apy) {
-      return Response.json({
-        success: false,
-        error: 'Missing required fields: protocol_name, blockchain, pool_address, apy'
-      }, { status: 400 });
-    }
+      minimum_deposit,
+      lock_period,
+      additional_info
+    } = request.validated;
 
     const result = await sql`
       INSERT INTO cultiv8_opportunities (

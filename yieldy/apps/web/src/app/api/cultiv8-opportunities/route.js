@@ -2,6 +2,7 @@ import sql from "@/app/api/utils/sql";
 import { rateLimitMiddleware } from "@/app/api/middleware/rateLimit";
 import { validateRequest, validateQuery } from "@/app/api/middleware/validation";
 import { OpportunityCreateSchema, OpportunityQuerySchema } from "@/app/api/schemas/opportunity";
+import { cache, cacheKeys } from "@/app/api/utils/cache";
 
 // Get all cultiv8 opportunities with filtering
 export async function GET(request) {
@@ -51,11 +52,26 @@ export async function GET(request) {
 
     query += ' ORDER BY apy DESC, tvl DESC';
 
+    // Try cache first
+    const cacheKey = `${cacheKeys.opportunities(blockchain || 'all')}:${minApy || 0}:${maxRisk || 10}`;
+    const cached = await cache.get(cacheKey);
+    if (cached) {
+      return Response.json({ 
+        success: true, 
+        opportunities: cached,
+        source: 'cache'
+      });
+    }
+
     const opportunities = await sql(query, params);
+    
+    // Cache the result
+    await cache.set(cacheKey, opportunities, cache.TTL.opportunities);
     
     return Response.json({ 
       success: true, 
-      opportunities: opportunities || [] 
+      opportunities: opportunities || [],
+      source: 'database'
     });
   } catch (error) {
     console.error('Error fetching cultiv8 opportunities:', error);
@@ -101,6 +117,9 @@ export async function POST(request) {
         ${risk_score}, ${protocol_type}, ${minimum_deposit}, ${lock_period}, ${JSON.stringify(additional_info)}
       ) RETURNING *
     `;
+
+    // Invalidate opportunities cache for this blockchain
+    await cache.invalidatePattern(`opportunities:${blockchain}*`);
 
     return Response.json({
       success: true,

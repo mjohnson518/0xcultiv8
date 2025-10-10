@@ -1,5 +1,6 @@
 import sql from "@/app/api/utils/sql";
 import { rateLimitMiddleware } from "@/app/api/middleware/rateLimit";
+import { cache, cacheKeys } from "@/app/api/utils/cache";
 
 export async function GET(request) {
   // Rate limiting - general tier
@@ -9,6 +10,16 @@ export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
     const days = parseInt(searchParams.get("days") || "90", 10);
+
+    // Try cache first
+    const cacheKey = cacheKeys.performance(days);
+    const cached = await cache.get(cacheKey);
+    if (cached) {
+      return Response.json({
+        ...cached,
+        source: 'cache'
+      });
+    }
     const bucketParam = (searchParams.get("bucket") || "day").toLowerCase();
     const baseCurrency = (
       searchParams.get("baseCurrency") || "USD"

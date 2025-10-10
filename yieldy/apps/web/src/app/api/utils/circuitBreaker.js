@@ -1,5 +1,6 @@
 import sql from './sql';
 import { auditLog, AUDIT_ACTIONS } from './auditLogger';
+import { log, logSecurityEvent } from './logger';
 
 /**
  * Circuit Breaker Pattern Implementation
@@ -22,7 +23,7 @@ export class CircuitBreaker {
     const count = (this.failureCount.get(key) || 0) + 1;
     this.failureCount.set(key, count);
 
-    console.warn(`⚠️ Circuit breaker failure recorded: ${key} (${count}/${this.threshold})`, context);
+    log.warn(`Circuit breaker failure recorded: ${key} (${count}/${this.threshold})`, context);
 
     // Trip if threshold exceeded
     if (count >= this.threshold) {
@@ -44,7 +45,7 @@ export class CircuitBreaker {
    * @param {object} context - Additional context
    */
   async trip(reason, context = {}) {
-    console.error(`🔴 CIRCUIT BREAKER TRIPPED: ${reason}`, context);
+    logSecurityEvent('CIRCUIT_BREAKER_TRIPPED', { reason, ...context });
 
     try {
       // Ensure agent_config has emergency_pause column
@@ -123,7 +124,7 @@ export class CircuitBreaker {
    */
   async reset(resetBy = 'admin') {
     try {
-      console.log(`✅ Circuit breaker reset by: ${resetBy}`);
+      log.info(`Circuit breaker reset by: ${resetBy}`);
 
       await sql`
         UPDATE agent_config

@@ -3,6 +3,7 @@ import { rateLimitMiddleware } from "@/app/api/middleware/rateLimit";
 import { validateRequest } from "@/app/api/middleware/validation";
 import { InvestmentSchema } from "@/app/api/schemas/investment";
 import { authMiddleware } from "@/app/api/middleware/auth";
+import { auditLog, AUDIT_ACTIONS, getIPFromRequest, getRequestIDFromRequest } from "@/app/api/utils/auditLogger";
 
 // ADD: helper to compute available funds
 async function getAvailableAgentFunds() {
@@ -130,9 +131,43 @@ export async function POST(request) {
       ) RETURNING *
     `;
 
+    // Audit log - investment created
+    await auditLog({
+      user_id: request.user?.id || 'system',
+      action: AUDIT_ACTIONS.INVESTMENT_CREATED,
+      resource_type: 'investment',
+      resource_id: result[0].id.toString(),
+      amount: amt,
+      metadata: {
+        opportunity_id,
+        blockchain,
+        expected_apy: expected_apy || opportunity[0].apy,
+        protocol: opportunity[0].protocol_name,
+      },
+      ip_address: getIPFromRequest(request),
+      request_id: getRequestIDFromRequest(request),
+      success: true,
+    });
+
     return Response.json({ success: true, investment: result[0] });
   } catch (error) {
     console.error("Error creating investment:", error);
+
+    // Audit log - investment failed
+    await auditLog({
+      user_id: request.user?.id || 'system',
+      action: AUDIT_ACTIONS.INVESTMENT_FAILED,
+      resource_type: 'investment',
+      amount: request.validated?.amount,
+      metadata: {
+        error: error.message,
+        opportunity_id: request.validated?.opportunity_id,
+      },
+      ip_address: getIPFromRequest(request),
+      request_id: getRequestIDFromRequest(request),
+      success: false,
+    });
+
     return Response.json(
       { success: false, error: "Failed to create investment" },
       { status: 500 },

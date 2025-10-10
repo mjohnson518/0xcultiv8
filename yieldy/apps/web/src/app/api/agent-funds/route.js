@@ -3,6 +3,7 @@ import { rateLimitMiddleware } from "@/app/api/middleware/rateLimit";
 import { validateRequest } from "@/app/api/middleware/validation";
 import { FundOperationSchema } from "@/app/api/schemas/funds";
 import { requireAdmin } from "@/app/api/middleware/auth";
+import { auditLog, AUDIT_ACTIONS, getIPFromRequest, getRequestIDFromRequest } from "@/app/api/utils/auditLogger";
 
 // Ensure ledger table exists
 async function ensureLedger() {
@@ -110,6 +111,26 @@ export async function POST(request) {
       VALUES (${amt}, ${type}, ${note || null})
       RETURNING id, amount, type, note, created_at
     `;
+
+    // Audit log - fund operation
+    const auditAction = type === 'deposit' ? AUDIT_ACTIONS.FUNDS_DEPOSITED :
+                        type === 'withdrawal' ? AUDIT_ACTIONS.FUNDS_WITHDRAWN :
+                        AUDIT_ACTIONS.FUNDS_ADJUSTED;
+
+    await auditLog({
+      user_id: request.user?.id || 'admin',
+      action: auditAction,
+      resource_type: 'funds',
+      resource_id: inserted[0].id.toString(),
+      amount: amt,
+      metadata: {
+        type,
+        note: note || null,
+      },
+      ip_address: getIPFromRequest(request),
+      request_id: getRequestIDFromRequest(request),
+      success: true,
+    });
 
     // Return updated balances
     const [totals2, investedRows2] = await sql.transaction((txn) => [

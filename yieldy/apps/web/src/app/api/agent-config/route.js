@@ -3,6 +3,7 @@ import { rateLimitMiddleware } from "@/app/api/middleware/rateLimit";
 import { validateRequest } from "@/app/api/middleware/validation";
 import { AgentConfigUpdateSchema } from "@/app/api/schemas/config";
 import { authMiddleware } from "@/app/api/middleware/auth";
+import { auditLog, AUDIT_ACTIONS, getIPFromRequest, getRequestIDFromRequest } from "@/app/api/utils/auditLogger";
 
 // Get agent configuration
 export async function GET(request) {
@@ -185,6 +186,21 @@ export async function PUT(request) {
     `;
 
     const result = await sql(query, params);
+
+    // Audit log - configuration updated
+    await auditLog({
+      user_id: request.user?.id || 'system',
+      action: AUDIT_ACTIONS.CONFIG_UPDATED,
+      resource_type: 'config',
+      resource_id: result[0].id.toString(),
+      metadata: {
+        changes: body,
+        previousConfig: currentConfig[0],
+      },
+      ip_address: getIPFromRequest(request),
+      request_id: getRequestIDFromRequest(request),
+      success: true,
+    });
 
     return Response.json({
       success: true,

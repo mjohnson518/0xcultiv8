@@ -1,4 +1,5 @@
 import sql from "@/app/api/utils/sql";
+import { rateLimitMiddleware } from "@/app/api/middleware/rateLimit";
 
 // Ensure ledger table exists
 async function ensureLedger() {
@@ -17,7 +18,11 @@ async function ensureLedger() {
   }
 }
 
-export async function GET() {
+export async function GET(request) {
+  // Rate limiting - general tier for read operations
+  const rateLimitError = await rateLimitMiddleware(request, 'general');
+  if (rateLimitError) return rateLimitError;
+
   try {
     await ensureLedger();
 
@@ -65,6 +70,10 @@ export async function POST(request) {
   try {
     await ensureLedger();
     const body = await request.json();
+    
+    // Rate limiting - use withdrawal tier for fund operations (most restrictive)
+    const rateLimitError = await rateLimitMiddleware(request, 'withdrawal');
+    if (rateLimitError) return rateLimitError;
     const { amount, type = 'deposit', note } = body;
 
     const amt = parseFloat(amount);

@@ -1,7 +1,12 @@
 import sql from "@/app/api/utils/sql";
+import { rateLimitMiddleware } from "@/app/api/middleware/rateLimit";
 
 // Scheduler endpoint: checks last scan and triggers scans/rebalance when due
 export async function POST(request) {
+  // Rate limiting - scan tier for scheduler operations
+  const rateLimitError = await rateLimitMiddleware(request, 'scan');
+  if (rateLimitError) return rateLimitError;
+
   try {
     // Read optional body but don't require it
     let body = {};

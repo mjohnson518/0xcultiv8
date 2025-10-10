@@ -1,7 +1,12 @@
 import sql from "@/app/api/utils/sql";
+import { rateLimitMiddleware } from "@/app/api/middleware/rateLimit";
 
 // Get agent configuration
 export async function GET(request) {
+  // Rate limiting - general tier
+  const rateLimitError = await rateLimitMiddleware(request, 'general');
+  if (rateLimitError) return rateLimitError;
+
   try {
     const config = await sql`
       SELECT * FROM agent_config ORDER BY id DESC LIMIT 1
@@ -44,6 +49,10 @@ export async function GET(request) {
 
 // Update agent configuration
 export async function PUT(request) {
+  // Rate limiting - config tier for configuration changes
+  const rateLimitError = await rateLimitMiddleware(request, 'config');
+  if (rateLimitError) return rateLimitError;
+
   try {
     const body = await request.json();
     const {

@@ -1,5 +1,7 @@
 import sql from "@/app/api/utils/sql";
 import { rateLimitMiddleware } from "@/app/api/middleware/rateLimit";
+import { validateRequest } from "@/app/api/middleware/validation";
+import { AgentConfigUpdateSchema } from "@/app/api/schemas/config";
 
 // Get agent configuration
 export async function GET(request) {
@@ -53,8 +55,13 @@ export async function PUT(request) {
   const rateLimitError = await rateLimitMiddleware(request, 'config');
   if (rateLimitError) return rateLimitError;
 
+  // Input validation
+  const validationError = await validateRequest(AgentConfigUpdateSchema)(request);
+  if (validationError) return validationError;
+
   try {
-    const body = await request.json();
+    const body = request.validated;
+    // Use validated data from middleware
     const {
       max_investment_per_opportunity,
       max_total_investment,

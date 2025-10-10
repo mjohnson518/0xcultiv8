@@ -1,5 +1,7 @@
 import sql from "@/app/api/utils/sql";
 import { rateLimitMiddleware } from "@/app/api/middleware/rateLimit";
+import { validateRequest } from "@/app/api/middleware/validation";
+import { InvestmentSchema } from "@/app/api/schemas/investment";
 
 // ADD: helper to compute available funds
 async function getAvailableAgentFunds() {
@@ -77,33 +79,22 @@ export async function POST(request) {
   const rateLimitError = await rateLimitMiddleware(request, 'investment');
   if (rateLimitError) return rateLimitError;
 
+  // Input validation
+  const validationError = await validateRequest(InvestmentSchema)(request);
+  if (validationError) return validationError;
+
   try {
-    const body = await request.json();
+    // Use validated data
     const {
       opportunity_id,
       amount,
       blockchain,
       transaction_hash,
       expected_apy,
-    } = body;
+    } = request.validated;
 
-    if (!opportunity_id || !amount || !blockchain) {
-      return Response.json(
-        {
-          success: false,
-          error: "Missing required fields: opportunity_id, amount, blockchain",
-        },
-        { status: 400 },
-      );
-    }
-
+    // Validation already done by middleware, these checks are redundant but kept for safety
     const amt = parseFloat(amount);
-    if (amt <= 0) {
-      return Response.json(
-        { success: false, error: "Investment amount must be positive" },
-        { status: 400 },
-      );
-    }
 
     // Verify the opportunity exists and is active
     const opportunity = await sql`

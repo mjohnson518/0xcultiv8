@@ -1,5 +1,7 @@
 import sql from "@/app/api/utils/sql";
 import { rateLimitMiddleware } from "@/app/api/middleware/rateLimit";
+import { validateRequest } from "@/app/api/middleware/validation";
+import { FundOperationSchema } from "@/app/api/schemas/funds";
 
 // Ensure ledger table exists
 async function ensureLedger() {
@@ -69,17 +71,17 @@ export async function GET(request) {
 export async function POST(request) {
   try {
     await ensureLedger();
-    const body = await request.json();
     
     // Rate limiting - use withdrawal tier for fund operations (most restrictive)
     const rateLimitError = await rateLimitMiddleware(request, 'withdrawal');
     if (rateLimitError) return rateLimitError;
-    const { amount, type = 'deposit', note } = body;
 
+    // Input validation
+    const validationError = await validateRequest(FundOperationSchema)(request);
+    if (validationError) return validationError;
+
+    const { amount, type, note } = request.validated;
     const amt = parseFloat(amount);
-    if (!amt || amt <= 0) {
-      return Response.json({ success: false, error: "Amount must be positive" }, { status: 400 });
-    }
     if (!['deposit','withdrawal','adjustment'].includes(type)) {
       return Response.json({ success: false, error: "Invalid type" }, { status: 400 });
     }

@@ -1,0 +1,37 @@
+<svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <!-- Gradient background -->
+  <defs>
+    <linearGradient id="appIconGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#10b981;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#059669;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Rounded square background (iOS style) -->
+  <rect width="1024" height="1024" rx="225" fill="url(#appIconGrad)"/>
+  
+  <!-- Bold infinity symbol with cultivation theme - scaled for 1024x1024 -->
+  <g>
+    <!-- Main infinity loop -->
+    <path
+      d="M 256 512 Q 256 307, 358 307 Q 461 307, 512 512 Q 563 307, 666 307 Q 768 307, 768 512 Q 768 717, 666 717 Q 563 717, 512 512 Q 461 717, 358 717 Q 256 717, 256 512 Z"
+      fill="#FFFFFF"
+      opacity="0.95"
+    />
+    
+    <!-- Inner cutouts to create the infinity loops -->
+    <ellipse cx="358" cy="512" rx="82" ry="133" fill="url(#appIconGrad)"/>
+    <ellipse cx="666" cy="512" rx="82" ry="133" fill="url(#appIconGrad)"/>
+    
+    <!-- Sprout on top representing growth/cultivation -->
+    <g opacity="0.95">
+      <path d="M 512 225 L 512 102" stroke="#FFFFFF" strokeWidth="40" strokeLinecap="round"/>
+      <path d="M 512 164 Q 471 123, 450 143" stroke="#FFFFFF" strokeWidth="28" strokeLinecap="round"/>
+      <path d="M 512 164 Q 553 123, 574 143" stroke="#FFFFFF" strokeWidth="28" strokeLinecap="round"/>
+    </g>
+    
+    <!-- Central accent representing "8" in cultiv8 -->
+    <circle cx="512" cy="512" r="30" fill="#10b981"/>
+  </g>
+</svg>
+

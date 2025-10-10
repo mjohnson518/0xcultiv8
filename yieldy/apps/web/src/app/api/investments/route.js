@@ -4,6 +4,7 @@ import { validateRequest } from "@/app/api/middleware/validation";
 import { InvestmentSchema } from "@/app/api/schemas/investment";
 import { authMiddleware } from "@/app/api/middleware/auth";
 import { auditLog, AUDIT_ACTIONS, getIPFromRequest, getRequestIDFromRequest } from "@/app/api/utils/auditLogger";
+import { checkEmergencyPause, circuitBreaker } from "@/app/api/utils/circuitBreaker";
 
 // ADD: helper to compute available funds
 async function getAvailableAgentFunds() {
@@ -80,6 +81,10 @@ export async function POST(request) {
   // Authentication required for creating investments
   const authError = await authMiddleware(request);
   if (authError) return authError;
+
+  // Check emergency pause
+  const pauseError = await checkEmergencyPause(request, { allowWithdrawals: false });
+  if (pauseError) return pauseError;
 
   // Rate limiting - investment tier for write operations
   const rateLimitError = await rateLimitMiddleware(request, 'investment');
@@ -166,6 +171,12 @@ export async function POST(request) {
       ip_address: getIPFromRequest(request),
       request_id: getRequestIDFromRequest(request),
       success: false,
+    });
+
+    // Record failure in circuit breaker
+    await circuitBreaker.recordFailure('investment', {
+      error: error.message,
+      opportunity_id: request.validated?.opportunity_id,
     });
 
     return Response.json(

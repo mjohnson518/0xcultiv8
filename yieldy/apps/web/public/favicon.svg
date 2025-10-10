@@ -1,0 +1,21 @@
+<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+  <!-- Solid emerald background for maximum contrast -->
+  <rect width="32" height="32" rx="6" fill="#059669"/>
+  
+  <!-- Ultra-simple infinity "8" shape in white -->
+  <g fill="#FFFFFF">
+    <!-- Figure-8 / infinity symbol optimized for small sizes -->
+    <!-- Top circle of the 8 -->
+    <circle cx="16" cy="11" r="5" fill="none" stroke="#FFFFFF" strokeWidth="2.5"/>
+    
+    <!-- Bottom circle of the 8 -->
+    <circle cx="16" cy="21" r="5" fill="none" stroke="#FFFFFF" strokeWidth="2.5"/>
+    
+    <!-- Small sprout leaf on top left -->
+    <path d="M 13 6 L 11 4 M 13 6 L 15 4" stroke="#FFFFFF" strokeWidth="1.5" strokeLinecap="round"/>
+    
+    <!-- Small sprout leaf on top right -->
+    <path d="M 19 6 L 17 4 M 19 6 L 21 4" stroke="#FFFFFF" strokeWidth="1.5" strokeLinecap="round"/>
+  </g>
+</svg>
+

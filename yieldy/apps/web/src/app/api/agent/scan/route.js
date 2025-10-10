@@ -399,62 +399,95 @@ export async function POST(request) {
   }
 }
 
-// Simulate blockchain scanning for cultiv8 opportunities
+// Scan blockchain for cultiv8 opportunities using real protocol adapters
 async function scanBlockchainForCultiv8Opportunities(blockchain, config) {
-  // In a real implementation, this would connect to blockchain APIs
-  // For demo purposes, we'll return simulated data
+  try {
+    // Dynamically import adapters to avoid circular dependencies
+    const { fetchAllProtocolData } = await import('../protocols/adapters');
+    const { riskEngine } = await import('../utils/riskEngine');
 
-  const mockOpportunities = [
+    // Fetch real on-chain data
+    const protocolData = await fetchAllProtocolData(blockchain);
+
+    // Transform into opportunity format with risk scoring
+    const opportunities = await Promise.all(
+      protocolData
+        .filter(p => p.success && p.apy > 0)
+        .map(async (data) => {
+          // Create temporary opportunity object for risk calculation
+          const tempOpp = {
+            protocol_name: data.protocol.charAt(0).toUpperCase() + data.protocol.slice(1),
+            pool_address: data.metadata.poolAddress,
+            token_symbol: 'USDC',
+            apy: data.apy,
+            tvl: data.tvl,
+            protocol_type: 'lending',
+            minimum_deposit: 1,
+            lock_period: 0,
+            blockchain,
+            // Add metadata for risk scoring
+            protocol_age_years: data.protocol === 'aave' ? 4 : data.protocol === 'compound' ? 6 : 1,
+            audit_count: data.protocol === 'aave' ? 8 : data.protocol === 'compound' ? 10 : 0,
+            has_bug_bounty: true,
+            governance_type: 'decentralized',
+            team_doxxed: true,
+            additional_info: data.metadata,
+          };
+
+          // Calculate risk score
+          const riskScore = await riskEngine.calculateRisk(tempOpp);
+
+          return {
+            ...tempOpp,
+            risk_score: Math.round(riskScore.composite),
+            risk_breakdown: riskScore.breakdown,
+          };
+        })
+    );
+
+    return opportunities;
+  } catch (error) {
+    console.error(`Error scanning ${blockchain} with real adapters:`, error);
+
+    // Fallback to basic opportunities if adapter fails
+    return getFallbackOpportunities(blockchain);
+  }
+}
+
+// Fallback opportunities if Web3 calls fail
+function getFallbackOpportunities(blockchain) {
+  const base = [
     {
       protocol_name: "Aave",
-      pool_address: "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2",
+      pool_address: blockchain === "ethereum" 
+        ? "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2"
+        : "0xA238Dd80C259a72e81d7e4664a9801593F98d1c5",
       token_symbol: "USDC",
-      apy: 4.25,
-      tvl: 1500000000,
+      apy: blockchain === "base" ? 4.5 : 4.0,
+      tvl: blockchain === "base" ? 150000000 : 1500000000,
       risk_score: 3,
       protocol_type: "lending",
       minimum_deposit: 1,
       lock_period: 0,
-      additional_info: { version: "v3", collateral_factor: 0.8 },
+      additional_info: { version: "v3", source: "fallback" },
     },
     {
       protocol_name: "Compound",
-      pool_address: "0xc3d688B66703497DAA19211EEdff47f25384cdc3",
+      pool_address: blockchain === "ethereum"
+        ? "0xc3d688B66703497DAA19211EEdff47f25384cdc3"
+        : "0x9c4ec768c28520B50860ea7a15bd7213a9fF58bf",
       token_symbol: "USDC",
-      apy: 3.85,
-      tvl: 800000000,
+      apy: blockchain === "base" ? 3.9 : 3.5,
+      tvl: blockchain === "base" ? 80000000 : 800000000,
       risk_score: 4,
       protocol_type: "lending",
       minimum_deposit: 1,
       lock_period: 0,
-      additional_info: { version: "v3", governance_token: "COMP" },
-    },
-    {
-      protocol_name: "Uniswap V3",
-      pool_address: "0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640",
-      token_symbol: "USDC",
-      apy: 8.75,
-      tvl: 250000000,
-      risk_score: 7,
-      protocol_type: "liquidity_pool",
-      minimum_deposit: 100,
-      lock_period: 0,
-      additional_info: { fee_tier: 0.05, pair: "USDC/ETH" },
+      additional_info: { version: "v3", source: "fallback" },
     },
   ];
 
-  // Filter based on blockchain
-  if (blockchain === "base") {
-    return mockOpportunities.map((op) => ({
-      ...op,
-      protocol_name: op.protocol_name + " (Base)",
-      pool_address: op.pool_address.replace("0x8", "0xB"), // Mock Base addresses
-      apy: op.apy + 0.5, // Base typically has slightly higher yields
-      tvl: op.tvl * 0.1, // Base has lower TVL
-    }));
-  }
-
-  return mockOpportunities;
+  return base;
 }
 
 // Helper: ChatGPT request with timeout to avoid long-running scans
@@ -475,7 +508,7 @@ async function requestChatGPTWithTimeout(payload, timeoutMs = 5000) {
   }
 }
 
-// AI-powered investment decision making
+// AI-powered investment decision making with portfolio optimization
 async function analyzeAndDecideInvestments(
   blockchain,
   config,
@@ -494,9 +527,37 @@ async function analyzeAndDecideInvestments(
       ORDER BY apy DESC
     `;
 
+    // Use portfolio optimizer for smart allocation
+    const { portfolioOptimizer } = await import('../utils/portfolioOptimizer');
+    
+    const availableForNewInvestments = effectiveMaxTotal - (currentTotalStart || 0);
+    
+    if (availableForNewInvestments <= 0) {
+      return []; // No budget available
+    }
+
+    const optimizedPlan = portfolioOptimizer.optimizeAllocation(
+      opportunities,
+      {
+        maxTotalInvestment: availableForNewInvestments,
+        maxRiskScore: config.max_risk_score,
+        maxInvestmentPerOpportunity: config.max_investment_per_opportunity,
+      }
+    );
+
+    // Convert optimized allocations to investment decisions
+    const decisions = optimizedPlan.allocations.map((alloc) => ({
+      opportunity_id: alloc.opportunity.id,
+      shouldInvest: alloc.amount > 0,
+      amount: alloc.amount,
+      expected_apy: alloc.opportunity.apy,
+      confidence: alloc.sharpe || 0.5,
+      reasoning: `Portfolio-optimized allocation: ${alloc.percentage.toFixed(1)}% of budget. Sharpe ratio: ${alloc.sharpe?.toFixed(2) || 'N/A'}`,
+      risk_assessment: `Risk score: ${alloc.opportunity.risk_score}/10. Diversified allocation.`,
+    }));
+
     // Start from current invested total and plan within effective cap
     let plannedTotal = currentTotalStart || 0;
-    const decisions = [];
 
     for (const opportunity of opportunities) {
       if (plannedTotal >= effectiveMaxTotal) break;

@@ -1,6 +1,11 @@
 import sql from "@/app/api/utils/sql";
+import { rateLimitMiddleware } from "@/app/api/middleware/rateLimit";
 
 export async function GET(request) {
+  // Rate limiting - general tier
+  const rateLimitError = await rateLimitMiddleware(request, 'general');
+  if (rateLimitError) return rateLimitError;
+
   try {
     const { searchParams } = new URL(request.url);
     const days = parseInt(searchParams.get("days") || "90", 10);

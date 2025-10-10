@@ -1,7 +1,12 @@
 import sql from "@/app/api/utils/sql";
+import { rateLimitMiddleware } from "@/app/api/middleware/rateLimit";
 
 // Get all cultiv8 opportunities with filtering
 export async function GET(request) {
+  // Rate limiting - general tier for read operations
+  const rateLimitError = await rateLimitMiddleware(request, 'general');
+  if (rateLimitError) return rateLimitError;
+
   try {
     const { searchParams } = new URL(request.url);
     const blockchain = searchParams.get('blockchain');
@@ -57,6 +62,10 @@ export async function GET(request) {
 
 // Create new cultiv8 opportunity
 export async function POST(request) {
+  // Rate limiting - config tier for creating opportunities
+  const rateLimitError = await rateLimitMiddleware(request, 'config');
+  if (rateLimitError) return rateLimitError;
+
   try {
     const body = await request.json();
     const {

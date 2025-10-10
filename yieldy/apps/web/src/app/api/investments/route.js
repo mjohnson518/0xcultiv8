@@ -1,4 +1,5 @@
 import sql from "@/app/api/utils/sql";
+import { rateLimitMiddleware } from "@/app/api/middleware/rateLimit";
 
 // ADD: helper to compute available funds
 async function getAvailableAgentFunds() {
@@ -18,6 +19,10 @@ async function getAvailableAgentFunds() {
 
 // Get all investments with filtering
 export async function GET(request) {
+  // Rate limiting - general tier for read operations
+  const rateLimitError = await rateLimitMiddleware(request, 'general');
+  if (rateLimitError) return rateLimitError;
+
   try {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get("status");
@@ -68,6 +73,10 @@ export async function GET(request) {
 
 // Create new investment
 export async function POST(request) {
+  // Rate limiting - investment tier for write operations
+  const rateLimitError = await rateLimitMiddleware(request, 'investment');
+  if (rateLimitError) return rateLimitError;
+
   try {
     const body = await request.json();
     const {

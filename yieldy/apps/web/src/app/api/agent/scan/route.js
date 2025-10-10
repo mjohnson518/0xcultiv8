@@ -1,4 +1,5 @@
 import sql from "@/app/api/utils/sql";
+import { rateLimitMiddleware } from "@/app/api/middleware/rateLimit";
 
 // ADD: helper to compute available agent funds
 async function getAvailableAgentFunds() {
@@ -103,6 +104,10 @@ async function simulateWithdrawal(inv) {
 
 // AI Agent blockchain scanner
 export async function POST(request) {
+  // Rate limiting - scan tier for agent operations
+  const rateLimitError = await rateLimitMiddleware(request, 'scan');
+  if (rateLimitError) return rateLimitError;
+
   try {
     const body = await request.json();
     const { blockchain = "both", forceRun = false, scanOnly = false } = body;

@@ -2,6 +2,7 @@ import sql from "@/app/api/utils/sql";
 import { rateLimitMiddleware } from "@/app/api/middleware/rateLimit";
 import { validateRequest } from "@/app/api/middleware/validation";
 import { InvestmentSchema } from "@/app/api/schemas/investment";
+import { authMiddleware } from "@/app/api/middleware/auth";
 
 // ADD: helper to compute available funds
 async function getAvailableAgentFunds() {
@@ -75,6 +76,10 @@ export async function GET(request) {
 
 // Create new investment
 export async function POST(request) {
+  // Authentication required for creating investments
+  const authError = await authMiddleware(request);
+  if (authError) return authError;
+
   // Rate limiting - investment tier for write operations
   const rateLimitError = await rateLimitMiddleware(request, 'investment');
   if (rateLimitError) return rateLimitError;

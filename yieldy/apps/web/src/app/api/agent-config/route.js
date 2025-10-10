@@ -2,6 +2,7 @@ import sql from "@/app/api/utils/sql";
 import { rateLimitMiddleware } from "@/app/api/middleware/rateLimit";
 import { validateRequest } from "@/app/api/middleware/validation";
 import { AgentConfigUpdateSchema } from "@/app/api/schemas/config";
+import { authMiddleware } from "@/app/api/middleware/auth";
 
 // Get agent configuration
 export async function GET(request) {
@@ -51,6 +52,10 @@ export async function GET(request) {
 
 // Update agent configuration
 export async function PUT(request) {
+  // Authentication required for config changes
+  const authError = await authMiddleware(request);
+  if (authError) return authError;
+
   // Rate limiting - config tier for configuration changes
   const rateLimitError = await rateLimitMiddleware(request, 'config');
   if (rateLimitError) return rateLimitError;

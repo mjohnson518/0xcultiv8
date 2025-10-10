@@ -1,6 +1,7 @@
 import sql from "@/app/api/utils/sql";
 import { rateLimitMiddleware } from "@/app/api/middleware/rateLimit";
 import { authMiddleware } from "@/app/api/middleware/auth";
+import { checkEmergencyPause, circuitBreaker } from "@/app/api/utils/circuitBreaker";
 
 // ADD: helper to compute available agent funds
 async function getAvailableAgentFunds() {
@@ -113,9 +114,16 @@ export async function POST(request) {
   const rateLimitError = await rateLimitMiddleware(request, 'scan');
   if (rateLimitError) return rateLimitError;
 
+  // Check emergency pause (block investments but allow scan-only)
+  const body = await request.json();
+  const { blockchain = "both", forceRun = false, scanOnly = false } = body;
+  
+  if (!scanOnly) {
+    const pauseError = await checkEmergencyPause(request, { allowWithdrawals: false });
+    if (pauseError) return pauseError;
+  }
+
   try {
-    const body = await request.json();
-    const { blockchain = "both", forceRun = false, scanOnly = false } = body;
 
     // Get agent configuration (create default if missing)
     let configResult = await sql`
@@ -350,6 +358,12 @@ export async function POST(request) {
         });
       } catch (error) {
         console.error(`Error scanning ${chain}:`, error);
+
+        // Record failure in circuit breaker
+        await circuitBreaker.recordFailure(`scan:${chain}`, {
+          error: error.message,
+          blockchain: chain,
+        });
 
         // Update scan log with error
         await sql`

@@ -2,6 +2,7 @@ import sql from "@/app/api/utils/sql";
 import { rateLimitMiddleware } from "@/app/api/middleware/rateLimit";
 import { validateRequest } from "@/app/api/middleware/validation";
 import { FundOperationSchema } from "@/app/api/schemas/funds";
+import { requireAdmin } from "@/app/api/middleware/auth";
 
 // Ensure ledger table exists
 async function ensureLedger() {
@@ -71,6 +72,10 @@ export async function GET(request) {
 export async function POST(request) {
   try {
     await ensureLedger();
+    
+    // Admin authentication required for fund operations
+    const adminError = await requireAdmin(request);
+    if (adminError) return adminError;
     
     // Rate limiting - use withdrawal tier for fund operations (most restrictive)
     const rateLimitError = await rateLimitMiddleware(request, 'withdrawal');

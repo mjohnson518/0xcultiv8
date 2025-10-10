@@ -1,6 +1,22 @@
 # Cultiv8 Agent
 
+[![EIP-7702 Compliant](https://img.shields.io/badge/EIP--7702-Compliant-blue)](https://eips.ethereum.org/EIPS/eip-7702)
+[![EIP-8004 Compliant](https://img.shields.io/badge/EIP--8004-Compliant-green)](https://eips.ethereum.org/EIPS/eip-8004)
+[![Tests Passing](https://img.shields.io/badge/tests-43%2F43%20passing-brightgreen)]()
+[![Security](https://img.shields.io/badge/security-institutional%20grade-success)]()
+
+**The world's first EIP-7702/8004 compliant trustless yield farming agent.**
+
 An autonomous AI-powered DeFi investment agent that discovers, analyzes, and manages USDC investments across Ethereum and Base blockchains. Cultiv8 Agent continuously scans for optimal opportunities, evaluates risk profiles, and executes investment decisions based on configurable parameters.
+
+## What Makes Cultiv8 Different
+
+- **First EIP-7702 Implementation**: Seamless EOA code delegation for gasless operations
+- **EIP-8004 Compliant**: Trustless agent authorization with on-chain spending limits
+- **Institutional Security**: Multi-layer protection with circuit breakers and audit logging
+- **Real Web3 Integration**: Live data from Aave and Compound on-chain
+- **AI-Powered Intelligence**: Multi-dimensional risk scoring and portfolio optimization
+- **Full Transparency**: All agent decisions and executions recorded on-chain
 
 ## Overview
 

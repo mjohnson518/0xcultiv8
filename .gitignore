@@ -66,3 +66,13 @@ bun.lockb
 *.db
 *.sqlite
 
+# Development documentation (not for repo)
+DEVELOPMENT_STATUS.md
+MASTER_PLAN.md
+INFRASTRUCTURE_SETUP.md
+TASK_*.md
+*_STATUS.md
+*_PLAN.md
+*_SUMMARY.md
+*_COMPLETE.md
+

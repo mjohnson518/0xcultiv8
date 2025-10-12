@@ -106,7 +106,7 @@ export function logWithContext(level, message, meta = {}, request = null) {
 export const log = {
   error: (message, meta = {}, request = null) => logWithContext('error', message, meta, request),
   warn: (message, meta = {}, request = null) => logWithContext('warn', message, meta, request),
-  info: (message, meta = {}, request = {}, request = null) => logWithContext('info', message, meta, request),
+  info: (message, meta = {}, request = null) => logWithContext('info', message, meta, request),
   http: (message, meta = {}, request = null) => logWithContext('http', message, meta, request),
   debug: (message, meta = {}, request = null) => logWithContext('debug', message, meta, request),
 };

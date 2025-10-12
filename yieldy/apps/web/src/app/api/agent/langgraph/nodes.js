@@ -1,7 +1,7 @@
 import { ChatAnthropic } from "@langchain/anthropic";
 import { ChatOpenAI } from "@langchain/openai";
-import { fetchAllProtocolData } from '../../protocols/adapters';
-import { log } from '../../utils/logger';
+import { fetchAllProtocolData } from '../../protocols/adapters.js';
+import { log } from '../../utils/logger.js';
 
 /**
  * LangGraph Agent Nodes

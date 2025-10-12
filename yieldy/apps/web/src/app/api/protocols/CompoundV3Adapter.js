@@ -1,5 +1,5 @@
 import { ethers, Contract } from 'ethers';
-import { BaseAdapter } from './BaseAdapter';
+import { BaseAdapter } from './BaseAdapter.js';
 
 /**
  * Compound V3 (Comet) Protocol Adapter

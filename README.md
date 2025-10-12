@@ -11,86 +11,153 @@ An autonomous AI-powered DeFi investment agent that discovers, analyzes, and man
 
 ## What Makes Cultiv8 Different
 
-- **First EIP-7702 Implementation**: Seamless EOA code delegation for gasless operations
-- **EIP-8004 Compliant**: Trustless agent authorization with on-chain spending limits
-- **Institutional Security**: Multi-layer protection with circuit breakers and audit logging
-- **Real Web3 Integration**: Live data from Aave and Compound on-chain
-- **AI-Powered Intelligence**: Multi-dimensional risk scoring and portfolio optimization
-- **Full Transparency**: All agent decisions and executions recorded on-chain
+Cultiv8 is the first yield farming platform to implement EIP-7702 and EIP-8004 standards, enabling trustless agent automation with on-chain authorization and temporary code delegation. This provides seamless user experience without requiring smart contract wallet deployment.
+
+### Core Differentiators
+
+- **EIP-7702 Implementation**: Temporary EOA code delegation for gasless batch operations
+- **EIP-8004 Compliance**: On-chain agent authorization with revocable spending limits
+- **LangGraph AI Architecture**: Multi-step reasoning with Claude Sonnet 4.5 and GPT-4 Turbo
+- **Explainable Decisions**: Complete reasoning chain visible for every agent action
+- **Institutional Security**: Seven-layer defense including rate limiting, circuit breakers, and comprehensive audit logging
+- **Real Protocol Integration**: Live data from Aave V3 and Compound V3 via ethers.js
+- **Modern Portfolio Theory**: Risk-adjusted allocation using Sharpe ratio and Kelly criterion
+- **MCP Server Architecture**: Standardized tool integration for DeFi oracles and portfolio tracking
 
 ## Overview
 
-Cultiv8 Agent is a sophisticated automated investment platform that combines blockchain technology with artificial intelligence to optimize USDC returns across decentralized finance protocols. The agent operates autonomously, scanning for opportunities, performing risk assessments, and making data-driven investment decisions.
+Cultiv8 Agent is an autonomous yield farming platform that combines advanced AI decision-making with trustless smart contract execution. The platform analyzes opportunities across Ethereum and Base networks, calculates multi-dimensional risk scores, optimizes portfolio allocation, and executes transactions within user-defined spending limits.
 
 ### Key Features
 
-- **Autonomous Operation**: Automated scanning and investment execution based on configurable parameters
-- **Multi-Chain Support**: Operates across Ethereum and Base blockchains
-- **AI-Powered Analysis**: Leverages ChatGPT for qualitative opportunity assessment and investment decisions
-- **Risk Management**: Comprehensive 10-point risk scoring system evaluating protocols across multiple dimensions
-- **Real-Time Monitoring**: Continuous tracking of investments and performance metrics
-- **Auto-Rebalancing**: Automatically exits underperforming positions and reallocates to better opportunities
-- **Performance Fee System**: Transparent fee structure on realized profits
-- **Dark Mode Support**: Full UI theming for day and night usage
+- **Autonomous Operation**: LangGraph state machine coordinates analysis, strategy generation, selection, planning, and execution
+- **Multi-Chain Support**: Ethereum and Base with extensible architecture for additional networks
+- **Hybrid AI Analysis**: Claude Sonnet 4.5 for strategic analysis, GPT-4 Turbo for execution planning
+- **Risk Management**: Four-factor risk scoring (protocol 40%, financial 35%, technical 15%, market 10%)
+- **Real-Time Data**: Live APY and TVL from protocol smart contracts
+- **Transaction Execution**: Gas-optimized deposits and withdrawals with MEV protection
+- **State Persistence**: PostgreSQL checkpointing enables resumable agent execution
+- **Memory System**: Learns from outcomes to improve future decisions
 
 ## Architecture
 
 ### Technology Stack
 
-**Frontend:**
-- React 19
-- React Router 7
-- TanStack Query (React Query) for data management
-- Tailwind CSS for styling
-- Lucide React for icons
+**AI & Agent Framework:**
+- LangGraph for state machine orchestration
+- Claude Sonnet 4.5 for strategic analysis
+- GPT-4 Turbo for execution planning
+- MCP (Model Context Protocol) servers for tool integration
+- PostgreSQL checkpointing for state persistence
+
+**Smart Contracts:**
+- Solidity 0.8.20
+- OpenZeppelin security primitives
+- EIP-8004 agent authorization
+- EIP-7702 temporary code delegation
+- Hardhat development environment
 
 **Backend:**
-- Hono.js server framework
-- Neon Postgres database
-- ChatGPT integration for AI analysis
-- RESTful API architecture
+- React Router 7 with Hono.js
+- Neon PostgreSQL database
+- Redis for rate limiting and caching
+- Winston structured logging
+- ethers.js v6 for blockchain interactions
 
-**Blockchain:**
-- Multi-chain support (Ethereum, Base)
-- Smart contract interaction simulation
-- Web3 wallet integration ready
+**Frontend:**
+- React 19
+- TanStack Query for state management
+- Tailwind CSS
+- Real-time reasoning chain visualization
+
+**Security:**
+- Zod schema validation
+- JWT authentication with wallet signatures
+- Rate limiting (5 tiers)
+- Circuit breaker pattern
+- Comprehensive audit logging
+
+### Architecture Diagram
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Frontend (React, Wagmi, Real-time Reasoning Display)       │
+├─────────────────────────────────────────────────────────────┤
+│  API Layer (Authentication, Validation, Rate Limiting)      │
+├─────────────────────────────────────────────────────────────┤
+│  LangGraph Agent (Claude + GPT-4 Multi-Step Reasoning)      │
+│  ├─ Analyze Market   (Claude Sonnet 4.5)                    │
+│  ├─ Generate Strategies (Claude Sonnet 4.5)                 │
+│  ├─ Select Strategy  (Heuristic Scoring)                    │
+│  ├─ Build Plan       (GPT-4 Turbo)                          │
+│  └─ Execute          (Transaction Submission)               │
+├─────────────────────────────────────────────────────────────┤
+│  MCP Servers (DeFi Oracle, Gas Tracker, Portfolio)          │
+├─────────────────────────────────────────────────────────────┤
+│  Smart Contracts (EIP-8004 Agent, EIP-7702 Vault)           │
+├─────────────────────────────────────────────────────────────┤
+│  Protocol Adapters (Aave V3, Compound V3)                   │
+├─────────────────────────────────────────────────────────────┤
+│  Blockchain (Ethereum, Base)                                │
+└─────────────────────────────────────────────────────────────┘
+```
 
 ### Project Structure
 
 ```
-cultiv8/
-├── apps/
-│   ├── web/                    # Web application
-│   │   ├── src/
-│   │   │   ├── app/
-│   │   │   │   ├── api/        # API routes
-│   │   │   │   │   ├── agent/  # Agent scan and scheduler
-│   │   │   │   │   ├── agent-config/  # Configuration management
-│   │   │   │   │   ├── agent-funds/   # Fund management
-│   │   │   │   │   ├── cultiv8-opportunities/  # Opportunity tracking
-│   │   │   │   │   ├── investments/    # Investment tracking
-│   │   │   │   │   └── performance/    # Performance analytics
-│   │   │   │   ├── layout.jsx
-│   │   │   │   └── page.jsx
-│   │   │   ├── components/
-│   │   │   │   └── Cultiv8Agent/  # Main application components
-│   │   │   │       ├── Cultiv8Agent.jsx
-│   │   │   │       ├── DashboardTab.jsx
-│   │   │   │       ├── OpportunitiesTab.jsx
-│   │   │   │       ├── InvestmentsTab.jsx
-│   │   │   │       ├── PerformanceTab.jsx
-│   │   │   │       ├── FundingTab.jsx
-│   │   │   │       ├── RiskMethodologyTab.jsx
-│   │   │   │       ├── SettingsTab.jsx
-│   │   │   │       ├── Header.jsx
-│   │   │   │       ├── Navigation.jsx
-│   │   │   │       └── ... (additional components)
-│   │   │   └── hooks/
-│   │   │       └── useCultiv8AgentData.js
-│   │   └── package.json
-│   └── mobile/                 # Mobile application (Expo/React Native)
-│       └── ... (mobile app structure)
-└── README.md
+0xcultiv8/
+├── contracts/                          # Smart contracts
+│   ├── Cultiv8Agent.sol                # EIP-8004 agent authorization
+│   ├── AgentVault.sol                  # EIP-7702 compatible vault
+│   ├── interfaces/                     # Contract interfaces
+│   └── test/                           # 43 comprehensive tests
+├── docs/                               # Technical documentation
+│   ├── EIP-7702-INTEGRATION.md         # EIP-7702 implementation guide
+│   └── SECURITY-MODEL.md               # Security architecture
+├── yieldy/apps/web/                    # Web application
+│   ├── src/app/api/
+│   │   ├── agent/
+│   │   │   ├── langgraph/              # LangGraph state machine
+│   │   │   ├── mcp/                    # MCP servers (3)
+│   │   │   ├── memory/                 # Memory & learning system
+│   │   │   ├── safety/                 # Safety controller
+│   │   │   ├── run/                    # Agent execution endpoint
+│   │   │   ├── status/                 # Status endpoint
+│   │   │   └── history/                # Decision history
+│   │   ├── protocols/                  # Protocol adapters
+│   │   │   ├── AaveV3Adapter.js
+│   │   │   ├── CompoundV3Adapter.js
+│   │   │   └── adapters.js
+│   │   ├── middleware/                 # Security middleware
+│   │   │   ├── rateLimit.js
+│   │   │   ├── auth.js
+│   │   │   ├── validation.js
+│   │   │   └── metrics.js
+│   │   ├── schemas/                    # Zod validation schemas
+│   │   ├── utils/
+│   │   │   ├── riskEngine.js           # Multi-dimensional risk scoring
+│   │   │   ├── portfolioOptimizer.js   # MPT optimization
+│   │   │   ├── gasOptimizer.js         # Gas & MEV protection
+│   │   │   ├── circuitBreaker.js       # Emergency controls
+│   │   │   ├── auditLogger.js          # Audit trail system
+│   │   │   ├── logger.js               # Structured logging
+│   │   │   └── cache.js                # Redis caching
+│   │   ├── execute/                    # Transaction execution
+│   │   ├── eip7702/                    # EIP-7702 transaction builder
+│   │   ├── emergency/                  # Emergency pause controls
+│   │   └── ... (additional routes)
+│   └── src/components/Cultiv8Agent/
+│       ├── AgentDashboard.jsx          # Main agent interface
+│       ├── ReasoningChain.jsx          # AI reasoning visualization
+│       ├── AgentAuthorization.jsx      # EIP-8004 authorization UI
+│       ├── TransactionPreview.jsx      # Transaction simulation UI
+│       └── ... (UI components)
+├── migrations/                         # Database migrations
+│   ├── 001_add_indexes.sql
+│   ├── 002_rename_tables.sql
+│   └── 003_agent_decisions.sql
+├── docker-compose.yml                  # Redis infrastructure
+└── hardhat.config.js                   # Smart contract configuration
 ```
 
 ## Core Components

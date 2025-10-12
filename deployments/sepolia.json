@@ -1,0 +1,23 @@
+{
+  "network": "sepolia",
+  "chainId": "11155111",
+  "deployer": "0x3a8225ee1531f094F69A1d6070c7415C07d0949D",
+  "timestamp": "2025-10-12T11:49:49.792Z",
+  "contracts": {
+    "Cultiv8Agent": {
+      "address": "0x0d0a0cC1367f5086859C20b3C83295d28FC8E835",
+      "tx": "0xb37351f0fbed6d82b7f8e72d2684390ab91fa8a111e7e8a900b35f537972edd7"
+    },
+    "AgentVault": {
+      "address": "0x12b149385269bF796BF2614C2DE452F9f32d0Cbd",
+      "tx": "0x7b9a5e0ee89b3537f3c1b280bc71784b142955e51c6fe70c1382598ea6d30563"
+    }
+  },
+  "configuration": {
+    "usdc": "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
+    "whitelistedProtocols": {
+      "aave": "0x6Ae43d3271ff6888e7Fc43Fd7321a503ff738951",
+      "compound": "0x0000000000000000000000000000000000000000"
+    }
+  }
+}

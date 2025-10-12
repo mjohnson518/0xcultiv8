@@ -14,11 +14,21 @@ module.exports = {
   networks: {
     hardhat: {
       chainId: 31337,
+      forking: {
+        url: process.env.ETHEREUM_RPC_URL || "",
+        enabled: false,
+      },
     },
     sepolia: {
-      url: process.env.ETHEREUM_RPC_URL || "",
+      url: process.env.SEPOLIA_RPC_URL || process.env.ETHEREUM_RPC_URL || "",
       accounts: process.env.DEPLOYER_PRIVATE_KEY ? [process.env.DEPLOYER_PRIVATE_KEY] : [],
       chainId: 11155111,
+      gasPrice: "auto",
+      verify: {
+        etherscan: {
+          apiKey: process.env.ETHERSCAN_API_KEY || "",
+        },
+      },
     },
     baseSepolia: {
       url: process.env.BASE_RPC_URL || "",

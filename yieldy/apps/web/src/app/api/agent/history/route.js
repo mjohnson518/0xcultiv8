@@ -1,6 +1,6 @@
-import { agentMemory } from '../memory/memory-manager';
-import { rateLimitMiddleware } from '../../middleware/rateLimit';
-import { authMiddleware } from '../../middleware/auth';
+import { agentMemory } from '../memory/memory-manager.js';
+import { rateLimitMiddleware } from '../../middleware/rateLimit.js';
+import { authMiddleware } from '../../middleware/auth.js';
 
 /**
  * Agent History Endpoint

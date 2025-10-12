@@ -1,6 +1,6 @@
 import { ethers } from 'ethers';
-import { AaveV3Adapter } from './AaveV3Adapter';
-import { CompoundV3Adapter } from './CompoundV3Adapter';
+import { AaveV3Adapter } from './AaveV3Adapter.js';
+import { CompoundV3Adapter } from './CompoundV3Adapter.js';
 
 /**
  * Protocol Adapter Registry

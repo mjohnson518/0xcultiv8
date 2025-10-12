@@ -1,6 +1,6 @@
 import Redis from 'ioredis';
-import sql from '../../utils/sql';
-import { log } from '../../utils/logger';
+import sql from '../../utils/sql.js';
+import { log } from '../../utils/logger.js';
 
 /**
  * Agent Memory & Learning System

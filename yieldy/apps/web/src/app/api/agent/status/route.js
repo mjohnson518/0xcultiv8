@@ -1,8 +1,8 @@
-import { circuitBreaker } from '../../utils/circuitBreaker';
-import { agentMemory } from '../memory/memory-manager';
-import { rateLimitMiddleware } from '../../middleware/rateLimit';
-import { authMiddleware } from '../../middleware/auth';
-import sql from '../../utils/sql';
+import { circuitBreaker } from '../../utils/circuitBreaker.js';
+import { agentMemory } from '../memory/memory-manager.js';
+import { rateLimitMiddleware } from '../../middleware/rateLimit.js';
+import { authMiddleware } from '../../middleware/auth.js';
+import sql from '../../utils/sql.js';
 
 /**
  * Agent Status Endpoint

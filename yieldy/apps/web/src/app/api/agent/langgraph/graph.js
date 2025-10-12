@@ -2,7 +2,7 @@ import { StateGraph, END } from "@langchain/langgraph";
 import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
 import { Pool } from "pg";
 import { analyzeMarket, generateStrategies, selectStrategy, buildExecutionPlan, executeTransactions } from './nodes.js';
-import { log } from '../../utils/logger';
+import { log } from '../../utils/logger.js';
 
 /**
  * Build Cultiv8 Agent LangGraph

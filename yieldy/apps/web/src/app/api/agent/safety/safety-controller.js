@@ -1,6 +1,6 @@
-import sql from '../../utils/sql';
-import { circuitBreaker } from '../../utils/circuitBreaker';
-import { log, logSecurityEvent } from '../../utils/logger';
+import sql from '../../utils/sql.js';
+import { circuitBreaker } from '../../utils/circuitBreaker.js';
+import { log, logSecurityEvent } from '../../utils/logger.js';
 
 /**
  * Safety Controller

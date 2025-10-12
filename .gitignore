@@ -85,3 +85,6 @@ TASK_*.md
 *_TEMPLATE.md
 *_ENV.md
 
+# Deployment documentation (keep private)
+docs/MAINNET_DEPLOYMENT.md
+

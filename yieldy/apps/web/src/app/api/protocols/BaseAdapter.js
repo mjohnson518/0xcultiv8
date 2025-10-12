@@ -98,6 +98,63 @@ export class BaseAdapter {
   }
 
   /**
+   * Execute deposit transaction(s)
+   * @param {Wallet} signer - Wallet to sign transactions
+   * @param {BigInt} amount - Amount to deposit
+   * @returns {Promise<object>} - Transaction receipt(s)
+   */
+  async executeDeposit(signer, amount) {
+    const userAddress = await signer.getAddress();
+    const transactions = await this.buildDepositTransaction(userAddress, amount);
+
+    const receipts = [];
+
+    for (const tx of transactions) {
+      // Sign and send transaction
+      const response = await signer.sendTransaction(tx);
+      const receipt = await response.wait();
+      
+      receipts.push({
+        hash: receipt.hash,
+        blockNumber: receipt.blockNumber,
+        gasUsed: receipt.gasUsed.toString(),
+        status: receipt.status,
+        description: tx.description,
+      });
+    }
+
+    return {
+      success: true,
+      receipts,
+      totalGasUsed: receipts.reduce((sum, r) => sum + BigInt(r.gasUsed), 0n).toString(),
+    };
+  }
+
+  /**
+   * Execute withdrawal transaction
+   * @param {Wallet} signer - Wallet to sign transaction
+   * @param {BigInt} amount - Amount to withdraw
+   * @returns {Promise<object>} - Transaction receipt
+   */
+  async executeWithdraw(signer, amount) {
+    const userAddress = await signer.getAddress();
+    const tx = await this.buildWithdrawTransaction(userAddress, amount);
+
+    // Sign and send transaction
+    const response = await signer.sendTransaction(tx);
+    const receipt = await response.wait();
+
+    return {
+      success: true,
+      hash: receipt.hash,
+      blockNumber: receipt.blockNumber,
+      gasUsed: receipt.gasUsed.toString(),
+      status: receipt.status,
+      description: tx.description,
+    };
+  }
+
+  /**
    * Helper to add buffer to gas estimates
    * @param {BigInt} estimate
    * @param {number} bufferPercent - Buffer percentage (default 20%)

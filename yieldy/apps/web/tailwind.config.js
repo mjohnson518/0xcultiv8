@@ -1583,6 +1583,62 @@ module.exports = {
 				'zilla-slab': 'Zilla Slab',
 				'zilla-slab-highlight': 'Zilla Slab Highlight',
 			},
+			// Retro pixel fonts
+			pixel: ['VT323', 'monospace'],
+			mono: ['IBM Plex Mono', 'Courier New', 'monospace'],
+			retro: ['Press Start 2P', 'monospace'],
+		},
+		// Retro colors
+		colors: {
+			retro: {
+				black: '#000000',
+				white: '#FFFFFF',
+				gray: {
+					50: '#FAFAFA',
+					100: '#F5F5F5',
+					200: '#E5E5E5',
+					300: '#D4D4D4',
+					400: '#A3A3A3',
+					500: '#737373',
+					600: '#525252',
+					700: '#404040',
+					800: '#262626',
+					900: '#171717',
+				},
+				green: '#00FF00',
+				amber: '#FFAA00',
+				red: '#FF0000',
+			},
+		},
+		borderWidth: {
+			'3': '3px',
+			'5': '5px',
+		},
+		animation: {
+			'blink': 'blink 1s step-end infinite',
+		},
+		keyframes: {
+			blink: {
+				'0%, 50%': { opacity: '1' },
+				'51%, 100%': { opacity: '0' },
+			},
+		},
+		boxShadow: {
+			'retro': '2px 2px 0px 0px rgba(0, 0, 0, 1)',
+			'retro-lg': '4px 4px 0px 0px rgba(0, 0, 0, 1)',
 		},
 	},
+	plugins: [
+		function({ addUtilities }) {
+			addUtilities({
+				'.pixelated': {
+					'image-rendering': 'pixelated',
+				},
+				'.terminal-bg': {
+					'background-color': '#000000',
+					'color': '#00FF00',
+				},
+			});
+		},
+	],
 };

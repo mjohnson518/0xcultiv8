@@ -1,0 +1,673 @@
+/**
+ * Cultiv8 Retro Theme
+ * Terminal-inspired, monochromatic, pixel-perfect design system
+ * Inspiration: www-sacred brutalist aesthetic
+ */
+
+/* ========================================
+   FONT IMPORTS
+   ======================================== */
+
+@import '@fontsource/vt323/400.css';
+@import '@fontsource/ibm-plex-mono/400.css';
+@import '@fontsource/ibm-plex-mono/600.css';
+@import '@fontsource/press-start-2p/400.css';
+
+/* ========================================
+   CSS VARIABLES - MONOCHROMATIC PALETTE
+   ======================================== */
+
+:root {
+  /* Grayscale (black to white) */
+  --retro-black: #000000;
+  --retro-gray-900: #1a1a1a;
+  --retro-gray-800: #333333;
+  --retro-gray-700: #4d4d4d;
+  --retro-gray-600: #666666;
+  --retro-gray-500: #808080;
+  --retro-gray-400: #999999;
+  --retro-gray-300: #b3b3b3;
+  --retro-gray-200: #cccccc;
+  --retro-gray-100: #e6e6e6;
+  --retro-white: #ffffff;
+
+  /* Terminal accent colors (minimal use) */
+  --retro-green: #00ff00;      /* Success, active states */
+  --retro-amber: #ffaa00;       /* Warnings */
+  --retro-red: #ff0000;         /* Errors, critical */
+  
+  /* Typography */
+  --font-pixel: 'VT323', monospace;
+  --font-mono: 'IBM Plex Mono', monospace;
+  --font-display: 'Press Start 2P', monospace;
+
+  /* Spacing (8px grid) */
+  --space-1: 8px;
+  --space-2: 16px;
+  --space-3: 24px;
+  --space-4: 32px;
+  --space-5: 40px;
+  --space-6: 48px;
+
+  /* Borders */
+  --border-thin: 2px solid var(--retro-black);
+  --border-thick: 3px solid var(--retro-black);
+  --border-dashed: 2px dashed var(--retro-gray-600);
+
+  /* Z-index scale */
+  --z-base: 1;
+  --z-dropdown: 100;
+  --z-modal: 1000;
+  --z-toast: 10000;
+}
+
+/* ========================================
+   GLOBAL RETRO STYLES
+   ======================================== */
+
+body.retro-theme {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--retro-black);
+  background: var(--retro-white);
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+  image-rendering: crisp-edges;
+  -webkit-font-smoothing: none;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Remove all shadows globally */
+.retro-theme * {
+  box-shadow: none !important;
+  text-shadow: none !important;
+}
+
+/* Remove all rounded corners */
+.retro-theme * {
+  border-radius: 0 !important;
+}
+
+/* ========================================
+   TYPOGRAPHY SYSTEM
+   ======================================== */
+
+.retro-heading-1 {
+  font-family: var(--font-display);
+  font-size: 24px;
+  line-height: 1.2;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+}
+
+.retro-heading-2 {
+  font-family: var(--font-pixel);
+  font-size: 32px;
+  line-height: 1.3;
+  text-transform: uppercase;
+}
+
+.retro-heading-3 {
+  font-family: var(--font-pixel);
+  font-size: 24px;
+  line-height: 1.4;
+}
+
+.retro-body {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  line-height: 1.6;
+}
+
+.retro-small {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.retro-code {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  background: var(--retro-gray-100);
+  padding: 2px 6px;
+  border: 1px solid var(--retro-gray-300);
+}
+
+/* ========================================
+   UTILITY CLASSES
+   ======================================== */
+
+/* Standard retro border */
+.retro-border {
+  border: 2px solid var(--retro-black);
+}
+
+.retro-border-thick {
+  border: 3px solid var(--retro-black);
+}
+
+/* ASCII box with corners */
+.ascii-box {
+  position: relative;
+  border: 2px solid var(--retro-black);
+  padding: var(--space-2);
+}
+
+.ascii-box::before,
+.ascii-box::after {
+  content: '┌';
+  position: absolute;
+  top: -2px;
+  left: -2px;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.ascii-box::after {
+  content: '┐';
+  left: auto;
+  right: -2px;
+}
+
+/* Terminal text styling */
+.terminal-text {
+  font-family: var(--font-mono);
+  color: var(--retro-green);
+  background: var(--retro-black);
+  padding: var(--space-2);
+}
+
+.terminal-prompt::before {
+  content: 'root@cultiv8:~$ ';
+  color: var(--retro-green);
+  font-weight: 600;
+}
+
+/* Status indicators */
+.status-active {
+  color: var(--retro-green);
+}
+
+.status-warning {
+  color: var(--retro-amber);
+}
+
+.status-error {
+  color: var(--retro-red);
+}
+
+.status-inactive {
+  color: var(--retro-gray-500);
+}
+
+/* ========================================
+   BUTTON STYLES
+   ======================================== */
+
+.retro-button {
+  font-family: var(--font-pixel);
+  font-size: 18px;
+  text-transform: uppercase;
+  padding: 12px 24px;
+  border: 2px solid var(--retro-black);
+  background: var(--retro-white);
+  color: var(--retro-black);
+  cursor: pointer;
+  transition: none;
+  min-height: 44px; /* Touch target */
+}
+
+.retro-button:hover {
+  background: var(--retro-black);
+  color: var(--retro-white);
+}
+
+.retro-button:active {
+  transform: translate(2px, 2px);
+}
+
+.retro-button:disabled {
+  background: var(--retro-gray-300);
+  color: var(--retro-gray-600);
+  cursor: not-allowed;
+}
+
+.retro-button-primary {
+  background: var(--retro-black);
+  color: var(--retro-white);
+}
+
+.retro-button-primary:hover {
+  background: var(--retro-gray-900);
+}
+
+/* ========================================
+   TABLE STYLES
+   ======================================== */
+
+.retro-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: 14px;
+}
+
+.retro-table thead {
+  background: var(--retro-black);
+  color: var(--retro-white);
+}
+
+.retro-table th,
+.retro-table td {
+  border: 1px solid var(--retro-black);
+  padding: 8px 12px;
+  text-align: left;
+}
+
+.retro-table tbody tr:nth-child(even) {
+  background: var(--retro-gray-100);
+}
+
+.retro-table tbody tr:hover {
+  background: var(--retro-gray-200);
+}
+
+/* ========================================
+   CARD STYLES
+   ======================================== */
+
+.retro-card {
+  border: 2px solid var(--retro-black);
+  background: var(--retro-white);
+  margin-bottom: var(--space-2);
+}
+
+.retro-card-header {
+  background: var(--retro-black);
+  color: var(--retro-white);
+  padding: 8px 12px;
+  font-family: var(--font-pixel);
+  font-size: 18px;
+  text-transform: uppercase;
+  border-bottom: 2px solid var(--retro-black);
+}
+
+.retro-card-body {
+  padding: var(--space-2);
+}
+
+/* ========================================
+   ANIMATIONS
+   ======================================== */
+
+/* Blinking cursor */
+@keyframes blink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+
+.blink {
+  animation: blink 1s step-start infinite;
+}
+
+.cursor::after {
+  content: '█';
+  animation: blink 1s step-start infinite;
+  margin-left: 2px;
+}
+
+/* Glitch effect (minimal use) */
+@keyframes glitch {
+  0% { transform: translate(0); }
+  20% { transform: translate(-2px, 2px); }
+  40% { transform: translate(-2px, -2px); }
+  60% { transform: translate(2px, 2px); }
+  80% { transform: translate(2px, -2px); }
+  100% { transform: translate(0); }
+}
+
+.glitch {
+  animation: glitch 0.3s infinite;
+}
+
+/* ========================================
+   FORM ELEMENTS
+   ======================================== */
+
+.retro-input {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  padding: 10px 12px;
+  border: 2px solid var(--retro-black);
+  background: var(--retro-white);
+  color: var(--retro-black);
+  min-height: 44px;
+}
+
+.retro-input:focus {
+  outline: 3px solid var(--retro-black);
+  outline-offset: 2px;
+}
+
+.retro-input::placeholder {
+  color: var(--retro-gray-500);
+  font-style: italic;
+}
+
+.retro-checkbox {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--retro-black);
+  appearance: none;
+  cursor: pointer;
+}
+
+.retro-checkbox:checked {
+  background: var(--retro-black);
+  position: relative;
+}
+
+.retro-checkbox:checked::after {
+  content: '✓';
+  position: absolute;
+  top: -2px;
+  left: 2px;
+  color: var(--retro-white);
+  font-size: 16px;
+}
+
+/* ========================================
+   LOADER / SPINNER
+   ======================================== */
+
+.retro-loader {
+  font-family: var(--font-mono);
+  font-size: 24px;
+}
+
+@keyframes spin-ascii {
+  0% { content: '⠋'; }
+  10% { content: '⠙'; }
+  20% { content: '⠹'; }
+  30% { content: '⠸'; }
+  40% { content: '⠼'; }
+  50% { content: '⠴'; }
+  60% { content: '⠦'; }
+  70% { content: '⠧'; }
+  80% { content: '⠇'; }
+  90% { content: '⠏'; }
+  100% { content: '⠋'; }
+}
+
+.retro-spinner::before {
+  content: '⠋';
+  display: inline-block;
+  animation: spin-ascii 1s steps(10) infinite;
+}
+
+/* ========================================
+   MODAL / OVERLAY
+   ======================================== */
+
+.retro-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    var(--retro-black),
+    var(--retro-black) 1px,
+    transparent 1px,
+    transparent 2px
+  );
+  opacity: 0.3;
+  z-index: var(--z-modal);
+}
+
+.retro-modal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  border: 3px solid var(--retro-black);
+  background: var(--retro-white);
+  min-width: 400px;
+  max-width: 600px;
+  z-index: calc(var(--z-modal) + 1);
+}
+
+/* ========================================
+   ASCII DECORATIONS
+   ======================================== */
+
+.ascii-corners-top-left::before {
+  content: '┌';
+  position: absolute;
+  top: -2px;
+  left: -2px;
+  font-size: 16px;
+}
+
+.ascii-corners-top-right::after {
+  content: '┐';
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  font-size: 16px;
+}
+
+.ascii-divider {
+  border: none;
+  border-top: 1px solid var(--retro-gray-600);
+  margin: var(--space-2) 0;
+}
+
+.ascii-divider::before {
+  content: '─────────────────────────────────────────';
+  display: block;
+  text-align: center;
+  color: var(--retro-gray-600);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+/* ========================================
+   RESPONSIVE UTILITIES
+   ======================================== */
+
+@media (max-width: 768px) {
+  /* Hide ASCII art on mobile */
+  .hide-ascii-mobile {
+    display: none;
+  }
+  
+  /* Increase touch targets */
+  .retro-button {
+    min-height: 48px;
+    font-size: 16px;
+  }
+  
+  /* Stack layouts */
+  .retro-stack-mobile {
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 1024px) and (min-width: 769px) {
+  /* Simplify ASCII on tablet */
+  .simplify-ascii-tablet .ascii-box::before,
+  .simplify-ascii-tablet .ascii-box::after {
+    display: none;
+  }
+}
+
+/* ========================================
+   ACCESSIBILITY
+   ======================================== */
+
+/* Skip to content link */
+.skip-to-content {
+  position: absolute;
+  top: -40px;
+  left: 0;
+  background: var(--retro-black);
+  color: var(--retro-white);
+  padding: 8px;
+  text-decoration: none;
+  z-index: 100;
+}
+
+.skip-to-content:focus {
+  top: 0;
+}
+
+/* Focus indicators */
+*:focus-visible {
+  outline: 3px solid var(--retro-black);
+  outline-offset: 3px;
+}
+
+/* Screen reader only */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+/* ========================================
+   TERMINAL SPECIFIC
+   ======================================== */
+
+.terminal-window {
+  background: var(--retro-black);
+  color: var(--retro-green);
+  font-family: var(--font-mono);
+  padding: var(--space-2);
+  overflow-y: auto;
+  max-height: 600px;
+}
+
+.terminal-line {
+  margin-bottom: 4px;
+  white-space: pre-wrap;
+}
+
+.terminal-line::before {
+  content: '> ';
+  color: var(--retro-green);
+  font-weight: 600;
+}
+
+.terminal-output {
+  color: var(--retro-white);
+}
+
+.terminal-success {
+  color: var(--retro-green);
+}
+
+.terminal-warning {
+  color: var(--retro-amber);
+}
+
+.terminal-error {
+  color: var(--retro-red);
+}
+
+/* ========================================
+   DATA DISPLAY
+   ======================================== */
+
+.retro-metric {
+  font-family: var(--font-pixel);
+  font-size: 32px;
+  line-height: 1;
+  font-weight: normal;
+}
+
+.retro-label {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--retro-gray-600);
+}
+
+.retro-badge {
+  display: inline-block;
+  padding: 4px 8px;
+  border: 1px solid var(--retro-black);
+  background: var(--retro-white);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.retro-badge-active {
+  background: var(--retro-black);
+  color: var(--retro-green);
+}
+
+/* ========================================
+   LAYOUT UTILITIES
+   ======================================== */
+
+.retro-container {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 0 var(--space-2);
+}
+
+.retro-grid {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.retro-grid-2 {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.retro-grid-3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.retro-grid-4 {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+@media (max-width: 768px) {
+  .retro-grid-2,
+  .retro-grid-3,
+  .retro-grid-4 {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ========================================
+   PRINT STYLES
+   ======================================== */
+
+@media print {
+  body {
+    background: white;
+    color: black;
+  }
+  
+  .retro-border {
+    border-color: black;
+  }
+  
+  .no-print {
+    display: none;
+  }
+}
+

@@ -5,13 +5,13 @@
 [![Tests Passing](https://img.shields.io/badge/tests-43%2F43%20passing-brightgreen)]()
 [![Security](https://img.shields.io/badge/security-institutional%20grade-success)]()
 
-**The world's first EIP-7702/8004 compliant trustless yield farming agent.**
+**EIP-7702/8004 compliant trustless yield farming agent.**
 
-An autonomous AI-powered DeFi investment agent that discovers, analyzes, and manages USDC investments across Ethereum and Base blockchains. Cultiv8 Agent continuously scans for optimal opportunities, evaluates risk profiles, and executes investment decisions based on configurable parameters.
+An autonomous AI-powered DeFi investment agent that discovers, analyzes, and manages investments across Ethereum and Base. Cultiv8 Agent continuously scans for optimal opportunities, evaluates risk profiles, and executes investment decisions based on configurable parameters.
 
 ## What Makes Cultiv8 Different
 
-Cultiv8 is the first yield farming platform to implement EIP-7702 and EIP-8004 standards, enabling trustless agent automation with on-chain authorization and temporary code delegation. This provides seamless user experience without requiring smart contract wallet deployment.
+Cultiv8 implemenst EIP-7702 and EIP-8004 standards, enabling trustless agent automation with on-chain authorization and temporary code delegation. This provides seamless user experience without requiring smart contract wallet deployment.
 
 ### Core Differentiators
 
@@ -26,7 +26,7 @@ Cultiv8 is the first yield farming platform to implement EIP-7702 and EIP-8004 s
 
 ## Overview
 
-Cultiv8 Agent is an autonomous yield farming platform that combines advanced AI decision-making with trustless smart contract execution. The platform analyzes opportunities across Ethereum and Base networks, calculates multi-dimensional risk scores, optimizes portfolio allocation, and executes transactions within user-defined spending limits.
+The Cultiv8 Agent is an autonomous yield farming platform that combines AI decision-making with trustless smart contract execution. The platform analyzes opportunities across Ethereum and Base networks, calculates multi-dimensional risk scores, optimizes portfolio allocation, and executes transactions within user-defined spending limits.
 
 ### Key Features
 

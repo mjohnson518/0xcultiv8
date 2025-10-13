@@ -32,21 +32,4 @@ const sql = process.env.DATABASE_URL
   ? neon(process.env.DATABASE_URL, poolConfig) 
   : NullishQueryFunction;
 
-// Add query performance logging in development
-if (process.env.NODE_ENV !== 'production') {
-  const originalSql = sql;
-  const wrappedSql = (...args) => {
-    const start = Date.now();
-    return originalSql(...args).then(result => {
-      const duration = Date.now() - start;
-      if (duration > 100) {
-        console.warn(`Slow query (${duration}ms):`, args[0]?.substring(0, 100));
-      }
-      return result;
-    });
-  };
-  wrappedSql.transaction = originalSql.transaction;
-  module.exports = { default: wrappedSql };
-}
-
 export default sql;

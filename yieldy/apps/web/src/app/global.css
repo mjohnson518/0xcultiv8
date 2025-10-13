@@ -1,9 +1,9 @@
+/* Retro theme (Phase 8) */
+@import '../styles/retro-theme.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-/* Retro theme (Phase 8) */
-@import '../styles/retro-theme.css';
 
 @layer base {
   input, textarea, select, button {

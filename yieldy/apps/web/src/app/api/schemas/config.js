@@ -52,5 +52,16 @@ export const AgentConfigSchema = z.object({
 );
 
 // Partial update schema (all fields optional)
-export const AgentConfigUpdateSchema = AgentConfigSchema.partial();
+export const AgentConfigUpdateSchema = z.object({
+  max_investment_per_opportunity: z.number().positive().max(100000).optional(),
+  max_total_investment: z.number().positive().max(1000000).optional(),
+  min_apy_threshold: z.number().min(0).max(100).optional(),
+  max_risk_score: z.number().int().min(1).max(10).optional(),
+  auto_invest_enabled: z.boolean().optional(),
+  scan_interval_minutes: z.number().int().min(60).max(10080).optional(),
+  preferred_protocols: z.array(z.string()).optional(),
+  blacklisted_protocols: z.array(z.string()).optional(),
+  emergency_pause: z.boolean().optional(),
+  pause_reason: z.string().max(500).optional(),
+});
 

@@ -7,6 +7,7 @@ import {
   RetroLoader,
 } from '../Retro';
 import { RISK_LEVELS, STATUS_ICONS, createPercentageBar } from '../../utils/asciiArt';
+import { useDarkMode } from '../../hooks/useDarkMode';
 
 /**
  * Retro Opportunities Page
@@ -23,6 +24,7 @@ export function RetroOpportunities({
 }) {
   const [selected, setSelected] = useState(null);
   const [filterChain, setFilterChain] = useState('all');
+  const [isDark, toggleDark] = useDarkMode();
 
   const navigation = [
     { label: 'DASHBOARD', href: '/', active: false },
@@ -44,7 +46,7 @@ export function RetroOpportunities({
   };
 
   return (
-    <div className="min-h-screen bg-retro-white">
+    <div className="min-h-screen bg-retro-bg text-retro-fg">
       {/* Header */}
       <RetroHeader
         walletAddress={walletAddress}
@@ -52,6 +54,8 @@ export function RetroOpportunities({
         onConnect={onConnect}
         navigation={navigation}
         currentPage="opportunities"
+        isDark={isDark}
+        onToggleDark={toggleDark}
       />
 
       <div className="p-4 space-y-4">
@@ -62,7 +66,7 @@ export function RetroOpportunities({
             <select
               value={filterChain}
               onChange={(e) => setFilterChain(e.target.value)}
-              className="border-2 border-retro-black px-2 py-1 bg-white font-mono"
+              className="border-2 border-retro-black px-2 py-1 bg-retro-bg text-retro-fg font-mono"
             >
               <option value="all">ALL CHAINS</option>
               <option value="ethereum">ETHEREUM</option>

@@ -6,6 +6,7 @@ import {
   RetroModal,
 } from '../Retro';
 import { STATUS_ICONS } from '../../utils/asciiArt';
+import { useDarkMode } from '../../hooks/useDarkMode';
 
 /**
  * Retro Settings Page
@@ -35,6 +36,7 @@ export function RetroSettings({
   });
 
   const [showRevokeModal, setShowRevokeModal] = useState(false);
+  const [isDark, toggleDark] = useDarkMode();
 
   const navigation = [
     { label: 'DASHBOARD', href: '/', active: false },
@@ -57,7 +59,7 @@ export function RetroSettings({
   };
 
   return (
-    <div className="min-h-screen bg-retro-white">
+    <div className="min-h-screen bg-retro-bg text-retro-fg">
       {/* Header */}
       <RetroHeader
         walletAddress={walletAddress}
@@ -65,6 +67,8 @@ export function RetroSettings({
         onConnect={onConnect}
         navigation={navigation}
         currentPage="settings"
+        isDark={isDark}
+        onToggleDark={toggleDark}
       />
 
       <div className="p-4 space-y-4">
@@ -76,7 +80,7 @@ export function RetroSettings({
               <span className="text-sm">AUTO-INVEST:</span>
               <button
                 onClick={() => setFormData(prev => ({ ...prev, autoInvest: !prev.autoInvest }))}
-                className="font-mono text-sm px-3 py-1 border-2 border-retro-black hover:bg-retro-gray-100"
+                className="font-mono text-sm px-3 py-1 border-2 border-retro-black bg-retro-bg text-retro-fg hover:bg-retro-gray-100"
               >
                 {formData.autoInvest ? '[●ON]' : '[○OFF]'}
               </button>
@@ -281,12 +285,95 @@ export function RetroSettings({
           )}
         </RetroCard>
 
+        {/* Risk Framework */}
+        <RetroCard title="RISK FRAMEWORK" status="INFO" collapsible defaultExpanded={true}>
+          <div className="font-mono text-sm space-y-4">
+            <p className="text-retro-gray-600">
+              Cultiv8 uses a multi-dimensional risk scoring system (0-10 scale):
+            </p>
+
+            {/* Risk Dimensions */}
+            <div className="space-y-3 pl-3 border-l-2 border-retro-gray-400">
+              <div>
+                <p className="text-xs uppercase text-retro-gray-600 mb-1">Protocol Risk (25%)</p>
+                <p className="text-xs">
+                  Audit history, time in production, TVL track record, past exploits
+                </p>
+              </div>
+              
+              <div>
+                <p className="text-xs uppercase text-retro-gray-600 mb-1">Financial Risk (25%)</p>
+                <p className="text-xs">
+                  Liquidity depth, impermanent loss potential, fee structure
+                </p>
+              </div>
+
+              <div>
+                <p className="text-xs uppercase text-retro-gray-600 mb-1">Technical Risk (25%)</p>
+                <p className="text-xs">
+                  Smart contract complexity, upgrade mechanisms, oracle dependencies
+                </p>
+              </div>
+
+              <div>
+                <p className="text-xs uppercase text-retro-gray-600 mb-1">Market Risk (25%)</p>
+                <p className="text-xs">
+                  Asset volatility, correlation risk, market conditions
+                </p>
+              </div>
+            </div>
+
+            {/* Risk Levels Guide */}
+            <div className="border-t-2 border-retro-gray-300 pt-3 space-y-2">
+              <p className="text-xs uppercase font-semibold">Risk Level Guide:</p>
+              <div className="space-y-1 text-xs">
+                <p><span className="text-retro-green">●</span> 0-3: LOW RISK - Blue-chip protocols, minimal complexity</p>
+                <p><span className="text-retro-amber">●</span> 4-6: MEDIUM RISK - Established but with some complexity</p>
+                <p><span className="text-retro-amber">●</span> 7-8: HIGH RISK - Newer protocols or higher complexity</p>
+                <p><span className="text-retro-red">●</span> 9-10: CRITICAL RISK - Experimental, unaudited, or high volatility</p>
+              </div>
+            </div>
+
+            {/* User Risk Preference */}
+            <div className="border-t-2 border-retro-gray-300 pt-3">
+              <p className="text-xs uppercase font-semibold mb-2">Your Risk Tolerance:</p>
+              <div className="space-y-3">
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs">CONSERVATIVE</span>
+                    <span className="text-xs">MODERATE</span>
+                    <span className="text-xs">AGGRESSIVE</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="1"
+                    max="10"
+                    value={formData.maxRisk}
+                    onChange={(e) => setFormData(prev => ({ ...prev, maxRisk: Number(e.target.value) }))}
+                    className="w-full"
+                  />
+                  <div className="flex justify-between text-xs text-retro-gray-600 mt-1">
+                    <span>Risk 1</span>
+                    <span className="font-semibold text-retro-fg">
+                      Current: {formData.maxRisk}/10
+                    </span>
+                    <span>Risk 10</span>
+                  </div>
+                </div>
+                <p className="text-xs text-retro-gray-600">
+                  Agent will only select opportunities with risk score ≤ {formData.maxRisk}
+                </p>
+              </div>
+            </div>
+          </div>
+        </RetroCard>
+
         {/* Advanced Settings */}
         <RetroCard title="ADVANCED OPTIONS" collapsible defaultExpanded={false}>
           <div className="font-mono text-sm space-y-3">
             <div className="flex items-center justify-between">
               <span>Scan Interval:</span>
-              <select className="border-2 border-retro-black px-2 py-1 bg-white font-mono">
+              <select className="border-2 border-retro-black px-2 py-1 bg-retro-bg text-retro-fg font-mono">
                 <option>1 HOUR</option>
                 <option>6 HOURS</option>
                 <option>24 HOURS</option>
@@ -295,12 +382,12 @@ export function RetroSettings({
             
             <div className="flex items-center justify-between">
               <span>Enable MCP Servers:</span>
-              <button className="font-mono text-sm">[●ON]</button>
+              <button className="font-mono text-sm text-retro-fg">[●ON]</button>
             </div>
 
             <div className="flex items-center justify-between">
               <span>Emergency Pause:</span>
-              <button className="font-mono text-sm">[○OFF]</button>
+              <button className="font-mono text-sm text-retro-fg">[○OFF]</button>
             </div>
           </div>
         </RetroCard>

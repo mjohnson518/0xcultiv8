@@ -27,25 +27,25 @@ export function RetroButton({
     large: 'h-13 px-8 text-lg', // 52px height
   };
 
-  // Variant classes
+  // Variant classes - using CSS variables for dark mode
   const variantClasses = {
-    default: 'bg-white text-black hover:bg-black hover:text-white',
-    primary: 'bg-black text-white hover:bg-gray-800',
-    danger: 'bg-white text-red-600 hover:bg-red-600 hover:text-white border-red-600',
-    success: 'bg-black text-green-500 hover:bg-green-500 hover:text-black',
+    default: 'bg-retro-bg text-retro-fg hover:bg-retro-black hover:text-retro-white border-retro-black',
+    primary: 'bg-retro-black text-retro-white hover:bg-retro-gray-800 border-retro-black',
+    danger: 'bg-retro-bg text-retro-red hover:bg-retro-red hover:text-retro-white border-retro-red',
+    success: 'bg-retro-black text-retro-green hover:bg-retro-green hover:text-retro-black border-retro-green',
   };
 
   const baseClasses = `
     retro-button
     inline-flex items-center justify-center
-    border-2 border-black
+    border-2
     font-pixel
     uppercase
     transition-none
     cursor-pointer
     active:translate-x-0.5 active:translate-y-0.5
-    disabled:bg-gray-300 disabled:text-gray-600 disabled:cursor-not-allowed disabled:transform-none
-    focus-visible:outline focus-visible:outline-3 focus-visible:outline-black focus-visible:outline-offset-2
+    disabled:bg-retro-gray-300 disabled:text-retro-gray-600 disabled:cursor-not-allowed disabled:transform-none
+    focus-visible:outline focus-visible:outline-3 focus-visible:outline-retro-black focus-visible:outline-offset-2
     ${sizeClasses[size]}
     ${variantClasses[variant]}
     ${className}

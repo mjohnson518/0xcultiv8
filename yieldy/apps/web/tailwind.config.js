@@ -1635,8 +1635,39 @@ module.exports = {
 					'image-rendering': 'pixelated',
 				},
 				'.terminal-bg': {
-					'background-color': '#000000',
-					'color': '#00FF00',
+					'background-color': '#000000 !important',
+					'color': '#00FF00 !important',
+				},
+				'.terminal-text': {
+					'color': '#00FF00 !important',
+				},
+				'.terminal-white-text': {
+					'color': '#FFFFFF !important',
+				},
+				'.retro-border': {
+					'border-color': 'var(--retro-black)',
+				},
+				'.retro-border-2': {
+					'border-width': '2px',
+					'border-style': 'solid',
+					'border-color': 'var(--retro-black)',
+				},
+				'.retro-border-3': {
+					'border-width': '3px',
+					'border-style': 'solid',
+					'border-color': 'var(--retro-black)',
+				},
+				'.retro-bg-black': {
+					'background-color': 'var(--retro-black)',
+				},
+				'.retro-bg-white': {
+					'background-color': 'var(--retro-white)',
+				},
+				'.retro-text-fg': {
+					'color': 'var(--retro-fg)',
+				},
+				'.retro-text-bg': {
+					'color': 'var(--retro-bg)',
 				},
 			});
 		},

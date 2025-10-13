@@ -7,6 +7,7 @@ import {
   RetroLoader,
 } from '../Retro';
 import { STATUS_ICONS } from '../../utils/asciiArt';
+import { useDarkMode } from '../../hooks/useDarkMode';
 
 /**
  * Retro Agent Page
@@ -24,6 +25,7 @@ export function RetroAgent({
   onReject,
 }) {
   const [isRunning, setIsRunning] = useState(false);
+  const [isDark, toggleDark] = useDarkMode();
 
   const navigation = [
     { label: 'DASHBOARD', href: '/', active: false },
@@ -41,7 +43,7 @@ export function RetroAgent({
   };
 
   return (
-    <div className="min-h-screen bg-retro-white">
+    <div className="min-h-screen bg-retro-bg text-retro-fg">
       {/* Header */}
       <RetroHeader
         walletAddress={walletAddress}
@@ -49,6 +51,8 @@ export function RetroAgent({
         onConnect={onConnect}
         navigation={navigation}
         currentPage="agent"
+        isDark={isDark}
+        onToggleDark={toggleDark}
       />
 
       <div className="p-4 space-y-4">
@@ -113,7 +117,7 @@ export function RetroAgent({
                 </div>
                 <div>
                   <p className="text-retro-gray-600 text-xs uppercase mb-1">Amount</p>
-                  <p className="font-semibold text-retro-black">
+                  <p className="font-semibold text-retro-fg">
                     ${Number(selectedStrategy.amount).toLocaleString()}
                   </p>
                 </div>
@@ -195,19 +199,19 @@ export function RetroAgent({
 
         {/* Quick Stats */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="border-2 border-retro-black p-3 font-mono text-sm">
+          <div className="border-2 border-retro-black bg-retro-bg p-3 font-mono text-sm">
             <p className="text-retro-gray-600">Total Scans</p>
-            <p className="text-2xl font-pixel">{agentStatus?.totalScans || 0}</p>
+            <p className="text-2xl font-pixel text-retro-fg">{agentStatus?.totalScans || 0}</p>
           </div>
-          <div className="border-2 border-retro-black p-3 font-mono text-sm">
+          <div className="border-2 border-retro-black bg-retro-bg p-3 font-mono text-sm">
             <p className="text-retro-gray-600">Successful Executions</p>
             <p className="text-2xl font-pixel text-retro-green">
               {agentStatus?.successfulExecutions || 0}
             </p>
           </div>
-          <div className="border-2 border-retro-black p-3 font-mono text-sm">
+          <div className="border-2 border-retro-black bg-retro-bg p-3 font-mono text-sm">
             <p className="text-retro-gray-600">Success Rate</p>
-            <p className="text-2xl font-pixel">
+            <p className="text-2xl font-pixel text-retro-fg">
               {agentStatus?.successRate?.toFixed(0) || 0}%
             </p>
           </div>

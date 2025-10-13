@@ -112,15 +112,19 @@ export function RetroAgentTerminal({
         </div>
       </div>
 
-      {/* Terminal Window */}
+      {/* Terminal Window - Always black background with green text */}
       <div
         ref={terminalRef}
-        className="terminal-window font-mono text-sm overflow-y-auto"
-        style={{ maxHeight }}
+        className="font-mono text-sm overflow-y-auto p-3"
+        style={{ 
+          maxHeight, 
+          backgroundColor: '#000000',
+          color: '#00FF00',
+        }}
       >
         {steps.length === 0 ? (
-          <div className="text-gray-600">
-            <span className="blink">█</span> Awaiting agent execution...
+          <div style={{ color: '#999999' }}>
+            <span className="blink" style={{ color: '#00FF00' }}>█</span> Awaiting agent execution...
           </div>
         ) : (
           steps.map((step, index) => {
@@ -131,25 +135,25 @@ export function RetroAgentTerminal({
               <div key={index} className="mb-4">
                 {/* Step Header */}
                 <div className="flex items-center space-x-2 mb-1">
-                  <span className="text-gray-500 text-xs">
+                  <span className="text-xs" style={{ color: '#999999' }}>
                     [{formatTimestamp(step.timestamp)}]
                   </span>
                   <span className={`text-xs ${badge.color}`}>
                     [{badge.text}]
                   </span>
-                  <span className="text-green-500">
+                  <span style={{ color: '#00FF00' }}>
                     {statusSymbol} {step.step}
                   </span>
                 </div>
 
-                {/* Step Output */}
-                <div className="pl-4 text-white whitespace-pre-wrap">
+                {/* Step Output - White text for readability */}
+                <div className="pl-4 whitespace-pre-wrap" style={{ color: '#FFFFFF' }}>
                   {step.output}
                 </div>
 
                 {/* Duration if available */}
                 {step.duration && (
-                  <div className="pl-4 text-gray-600 text-xs mt-1">
+                  <div className="pl-4 text-xs mt-1" style={{ color: '#999999' }}>
                     Completed in {step.duration}ms
                   </div>
                 )}
@@ -160,8 +164,8 @@ export function RetroAgentTerminal({
 
         {/* Terminal Prompt */}
         {showPrompt && (
-          <div className="mt-2 flex items-center">
-            <span className="text-green-500">root@cultiv8:~$</span>
+          <div className="mt-2 flex items-center" style={{ color: '#00FF00' }}>
+            <span>root@cultiv8:~$</span>
             <span className="blink ml-1">█</span>
           </div>
         )}

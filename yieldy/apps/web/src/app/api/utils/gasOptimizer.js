@@ -65,9 +65,7 @@ export class GasOptimizer {
     // Check for common MEV-prone function selectors
     if (transaction.data) {
       const selector = transaction.data.substring(0, 10);
-      const mevProneSele
-
-ctors = [
+      const mevProneSelectors = [
         '0x38ed1739', // swapExactTokensForTokens
         '0x7ff36ab5', // swapExactETHForTokens
         '0x18cbafe5', // swapExactTokensForETH

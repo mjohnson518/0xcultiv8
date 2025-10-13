@@ -33,34 +33,34 @@ export function RetroCard({
     }
   };
 
-  // Variant styles
+  // Variant styles - using CSS variables for dark mode support
   const variantClasses = {
     default: {
-      header: 'bg-black text-white',
-      body: 'bg-white',
-      border: 'border-black',
+      header: 'retro-bg-black retro-text-bg', // Uses CSS variables
+      body: 'bg-retro-bg text-retro-fg',
+      border: 'retro-border-3', // Uses CSS variable for adaptive color
     },
     terminal: {
-      header: 'bg-black text-green-500',
-      body: 'bg-black text-green-500',
-      border: 'border-green-500',
+      header: 'bg-retro-black text-retro-green',
+      body: 'bg-retro-black text-retro-green',
+      border: 'border-retro-green border-3',
     },
     danger: {
-      header: 'bg-red-600 text-white',
-      body: 'bg-white',
-      border: 'border-red-600',
+      header: 'bg-retro-red text-retro-white',
+      body: 'bg-retro-bg text-retro-fg',
+      border: 'border-retro-red border-3',
     },
     warning: {
-      header: 'bg-yellow-500 text-black',
-      body: 'bg-white',
-      border: 'border-yellow-500',
+      header: 'bg-retro-amber text-retro-black',
+      body: 'bg-retro-bg text-retro-fg',
+      border: 'border-retro-amber border-3',
     },
   };
 
   const styles = variantClasses[variant] || variantClasses.default;
 
   return (
-    <div className={`retro-card border-2 ${styles.border} ${className}`}>
+    <div className={`retro-card ${styles.border} ${className}`}>
       {/* Title Bar */}
       <div
         className={`
@@ -69,7 +69,7 @@ export function RetroCard({
           font-pixel text-sm
           uppercase
           flex items-center justify-between
-          border-b-2 ${styles.border}
+          border-b-3 retro-border
           ${collapsible ? 'cursor-pointer' : ''}
         `}
         onClick={handleHeaderClick}
@@ -107,15 +107,15 @@ export function RetroCard({
       {/* Footer with ASCII decoration */}
       {footer && isExpanded && (
         <div className={`
-          bg-gray-100
+          bg-retro-gray-100
           px-3 py-2
           text-xs
           font-mono
-          border-t-2 ${styles.border}
+          border-t-3 retro-border
           flex items-center justify-between
         `}>
-          <span className="text-gray-600">└{'─'.repeat(50)}┘</span>
-          <span>{footer}</span>
+          <span className="text-retro-gray-600">└{'─'.repeat(50)}┘</span>
+          <span className="text-retro-fg">{footer}</span>
         </div>
       )}
     </div>

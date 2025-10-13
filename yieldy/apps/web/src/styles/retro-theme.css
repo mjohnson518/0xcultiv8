@@ -18,8 +18,13 @@
    ======================================== */
 
 :root {
-  /* Grayscale (black to white) */
+  /* Light mode (default) */
+  --retro-bg: #ffffff;
+  --retro-fg: #000000;
   --retro-black: #000000;
+  --retro-white: #ffffff;
+  
+  /* Grayscale */
   --retro-gray-900: #1a1a1a;
   --retro-gray-800: #333333;
   --retro-gray-700: #4d4d4d;
@@ -29,14 +34,57 @@
   --retro-gray-300: #b3b3b3;
   --retro-gray-200: #cccccc;
   --retro-gray-100: #e6e6e6;
-  --retro-white: #ffffff;
 
-  /* Terminal accent colors (minimal use) */
-  --retro-green: #00ff00;      /* Success, active states */
-  --retro-amber: #ffaa00;       /* Warnings */
-  --retro-red: #ff0000;         /* Errors, critical */
+  /* Terminal accent colors */
+  --retro-green: #00ff00;
+  --retro-amber: #ffaa00;
+  --retro-red: #ff0000;
+}
+
+/* Light mode - explicit (overrides system preference) */
+html.light,
+html.light body,
+.light {
+  --retro-bg: #ffffff !important;
+  --retro-fg: #000000 !important;
+  --retro-black: #000000 !important;
+  --retro-white: #ffffff !important;
   
-  /* Typography */
+  /* Light mode grayscale */
+  --retro-gray-900: #1a1a1a !important;
+  --retro-gray-800: #333333 !important;
+  --retro-gray-700: #4d4d4d !important;
+  --retro-gray-600: #666666 !important;
+  --retro-gray-500: #808080 !important;
+  --retro-gray-400: #999999 !important;
+  --retro-gray-300: #b3b3b3 !important;
+  --retro-gray-200: #cccccc !important;
+  --retro-gray-100: #e6e6e6 !important;
+}
+
+/* Dark mode - explicit (overrides system preference) */
+html.dark,
+html.dark body,
+.dark {
+  --retro-bg: #000000 !important;
+  --retro-fg: #00ff00 !important;
+  --retro-white: #000000 !important;
+  --retro-black: #00ff00 !important;
+  
+  /* Dark mode grayscale (inverted) */
+  --retro-gray-900: #e6e6e6 !important;
+  --retro-gray-800: #cccccc !important;
+  --retro-gray-700: #b3b3b3 !important;
+  --retro-gray-600: #999999 !important;
+  --retro-gray-500: #808080 !important;
+  --retro-gray-400: #666666 !important;
+  --retro-gray-300: #4d4d4d !important;
+  --retro-gray-200: #333333 !important;
+  --retro-gray-100: #1a1a1a !important;
+}
+
+/* Typography */
+:root {
   --font-pixel: 'VT323', monospace;
   --font-mono: 'IBM Plex Mono', monospace;
   --font-display: 'Press Start 2P', monospace;
@@ -65,12 +113,26 @@
    GLOBAL RETRO STYLES
    ======================================== */
 
+body {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--retro-fg);
+  background: var(--retro-bg);
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+  image-rendering: crisp-edges;
+  -webkit-font-smoothing: none;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background-color 0.2s, color 0.2s;
+}
+
 body.retro-theme {
   font-family: var(--font-mono);
   font-size: 16px;
   line-height: 1.5;
-  color: var(--retro-black);
-  background: var(--retro-white);
+  color: var(--retro-fg);
+  background: var(--retro-bg);
   image-rendering: pixelated;
   image-rendering: -moz-crisp-edges;
   image-rendering: crisp-edges;
@@ -335,22 +397,34 @@ body.retro-theme {
    FORM ELEMENTS
    ======================================== */
 
-.retro-input {
+.retro-input,
+select,
+input[type="text"],
+input[type="number"],
+input[type="email"],
+textarea {
   font-family: var(--font-mono);
   font-size: 16px;
   padding: 10px 12px;
   border: 2px solid var(--retro-black);
-  background: var(--retro-white);
-  color: var(--retro-black);
+  background: var(--retro-bg);
+  color: var(--retro-fg);
   min-height: 44px;
 }
 
-.retro-input:focus {
+.retro-input:focus,
+select:focus,
+input[type="text"]:focus,
+input[type="number"]:focus,
+input[type="email"]:focus,
+textarea:focus {
   outline: 3px solid var(--retro-black);
   outline-offset: 2px;
 }
 
-.retro-input::placeholder {
+.retro-input::placeholder,
+input::placeholder,
+textarea::placeholder {
   color: var(--retro-gray-500);
   font-style: italic;
 }
@@ -375,6 +449,36 @@ body.retro-theme {
   left: 2px;
   color: var(--retro-white);
   font-size: 16px;
+}
+
+/* Range Slider - Retro Style */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 8px;
+  background: var(--retro-gray-300);
+  outline: none;
+  border: 2px solid var(--retro-black);
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  background: var(--retro-black);
+  cursor: pointer;
+  border: 2px solid var(--retro-black);
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  background: var(--retro-black);
+  cursor: pointer;
+  border: 2px solid var(--retro-black);
+  border-radius: 0;
 }
 
 /* ========================================

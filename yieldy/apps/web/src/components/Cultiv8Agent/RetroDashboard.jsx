@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router';
 import { 
   RetroHeader, 
   RetroCard, 
@@ -8,6 +9,7 @@ import {
   RetroLoader
 } from '../Retro';
 import { BANNERS, STATUS_ICONS, RISK_LEVELS } from '../../utils/asciiArt';
+import { useDarkMode } from '../../hooks/useDarkMode';
 
 /**
  * Retro Dashboard Page
@@ -20,8 +22,11 @@ export function RetroDashboard({
   walletAddress,
   isConnected,
   onConnect,
+  onRunScan,
 }) {
   const [loading, setLoading] = useState(false);
+  const [isDark, toggleDark] = useDarkMode();
+  const navigate = useNavigate();
 
   // Calculate metrics
   const totalValue = investments?.reduce((sum, inv) => sum + Number(inv.amount || 0), 0) || 0;
@@ -40,8 +45,43 @@ export function RetroDashboard({
     { label: 'SETTINGS', href: '/settings', active: false },
   ];
 
+  const handleRunScan = async () => {
+    setLoading(true);
+    try {
+      if (onRunScan) {
+        await onRunScan();
+      } else {
+        // Trigger agent scan via API
+        const response = await fetch('/api/agent/scan', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            blockchain: 'both', 
+            scanOnly: true,  // Just scan, don't auto-invest
+            forceRun: true 
+          }),
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          console.log('Scan result:', data);
+          // Navigate to agent page to see results
+          navigate('/agent');
+        } else {
+          console.error('Scan failed:', await response.text());
+          alert('Scan failed. Check console for details.');
+        }
+      }
+    } catch (error) {
+      console.error('Scan error:', error);
+      alert('Scan error: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-retro-white">
+    <div className="min-h-screen bg-retro-bg text-retro-fg">
       {/* Header */}
       <RetroHeader
         walletAddress={walletAddress}
@@ -49,6 +89,8 @@ export function RetroDashboard({
         onConnect={onConnect}
         navigation={navigation}
         currentPage="dashboard"
+        isDark={isDark}
+        onToggleDark={toggleDark}
       />
 
       {/* System Status Banner */}
@@ -64,7 +106,7 @@ export function RetroDashboard({
         {/* Metrics Grid */}
         <RetroCardGrid cols={4}>
           <RetroCard title="TOTAL VALUE" status="LIVE">
-            <div className="font-pixel text-4xl text-retro-black">
+            <div className="font-pixel text-4xl text-retro-fg">
               ${totalValue.toLocaleString()}
             </div>
             <div className="font-mono text-sm text-retro-gray-600 mt-2">
@@ -82,7 +124,7 @@ export function RetroDashboard({
           </RetroCard>
 
           <RetroCard title="POSITIONS" status="ACTIVE">
-            <div className="font-pixel text-4xl text-retro-black">
+            <div className="font-pixel text-4xl text-retro-fg">
               {activePositions}
             </div>
             <div className="font-mono text-sm text-retro-gray-600 mt-2">
@@ -91,7 +133,7 @@ export function RetroDashboard({
           </RetroCard>
 
           <RetroCard title="AVG RISK" status={avgRisk < 4 ? 'LOW' : avgRisk < 7 ? 'MEDIUM' : 'HIGH'}>
-            <div className="font-pixel text-4xl text-retro-black">
+            <div className="font-pixel text-4xl text-retro-fg">
               {avgRisk.toFixed(1)}/10
             </div>
             <div className="font-mono text-sm text-retro-gray-600 mt-2">
@@ -167,13 +209,17 @@ export function RetroDashboard({
 
         {/* Quick Actions */}
         <div className="flex flex-wrap gap-2">
-          <RetroButton variant="primary">
-            RUN SCAN
+          <RetroButton 
+            variant="primary" 
+            onClick={handleRunScan}
+            disabled={loading}
+          >
+            {loading ? 'SCANNING...' : 'RUN SCAN'}
           </RetroButton>
-          <RetroButton>
+          <RetroButton onClick={() => navigate('/opportunities')}>
             VIEW ALL OPPORTUNITIES
           </RetroButton>
-          <RetroButton>
+          <RetroButton onClick={() => navigate('/settings')}>
             AGENT SETTINGS
           </RetroButton>
         </div>

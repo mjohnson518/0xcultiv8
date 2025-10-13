@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { X } from 'lucide-react';
-import { RetroIconButton } from './RetroButton';
+import { RetroIconButton, RetroButton } from './RetroButton';
 
 /**
  * RetroModal Component
@@ -194,8 +194,6 @@ export function RetroConfirmModal({
   confirmText = 'CONFIRM',
   cancelText = 'CANCEL',
 }) {
-  const { RetroButton } = await import('./RetroButton');
-
   return (
     <RetroModal
       isOpen={isOpen}

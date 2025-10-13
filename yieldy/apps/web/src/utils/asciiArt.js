@@ -178,8 +178,8 @@ export function createBox(width, height, style = 'single') {
 export const BANNERS = {
   startup: (tvl = '0', apy = '0.00') => `
 ╔═══════════════════════════════════════════════════════════════╗
-║ CULTIV8 AUTONOMOUS YIELD AGENT v1.0                          ║
-║ STATUS: OPERATIONAL | TVL: $${tvl.padStart(10)} | APY: ${apy}%${' '.repeat(Math.max(0, 5 - apy.length))}║
+║ CULTIV8 AUTONOMOUS YIELD AGENT v1.0                           ║
+║ STATUS: OPERATIONAL | TVL: $${tvl.padStart(10)} | APY: ${apy}%${' '.repeat(Math.max(0, 5 - apy.length))}          ║
 ╚═══════════════════════════════════════════════════════════════╝
   `,
   

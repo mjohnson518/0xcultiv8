@@ -5,19 +5,26 @@ import Redis from 'ioredis';
 let redis;
 let useMemoryFallback = false;
 
-try {
-  redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
-    enableOfflineQueue: false,
-    maxRetriesPerRequest: 1,
-  });
-
-  redis.on('error', (err) => {
-    console.warn('Redis connection error, falling back to memory store:', err.message);
-    useMemoryFallback = true;
-  });
-} catch (error) {
-  console.warn('Redis initialization failed, using memory store:', error.message);
+// Skip Redis during Vercel build
+if (process.env.VERCEL && !process.env.DATABASE_URL) {
+  console.log('Skipping Redis during build phase');
   useMemoryFallback = true;
+} else {
+  try {
+    redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
+      enableOfflineQueue: false,
+      maxRetriesPerRequest: 1,
+      lazyConnect: true, // Don't connect immediately
+    });
+
+    redis.on('error', (err) => {
+      console.warn('Redis connection error, falling back to memory store:', err.message);
+      useMemoryFallback = true;
+    });
+  } catch (error) {
+    console.warn('Redis initialization failed, using memory store:', error.message);
+    useMemoryFallback = true;
+  }
 }
 
 // Create different limiters for different endpoint types

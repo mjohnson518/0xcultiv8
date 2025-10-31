@@ -65,6 +65,12 @@ function getHonoPath(routeFile: string): { name: string; pattern: string }[] {
 
 // Import and register all routes
 async function registerRoutes() {
+  // Skip route registration during build
+  if (process.env.VERCEL_ENV && !process.env.VERCEL_URL) {
+    console.log('Skipping route registration during build');
+    return;
+  }
+
   const routeFiles = (
     await findRouteFiles(__dirname).catch((error) => {
       console.error('Error finding route files:', error);

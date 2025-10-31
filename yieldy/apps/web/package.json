@@ -32,6 +32,7 @@
 		"@fontsource/vt323": "^5.2.7",
 		"@hono/auth-js": "^1.0.15",
 		"@langchain/anthropic": "^0.3.30",
+		"@langchain/core": "^0.3.30",
 		"@langchain/langgraph": "^0.4.9",
 		"@langchain/langgraph-checkpoint-postgres": "^0.1.2",
 		"@langchain/openai": "^0.6.14",

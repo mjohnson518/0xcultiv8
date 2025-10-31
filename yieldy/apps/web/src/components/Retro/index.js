@@ -10,4 +10,5 @@ export { RetroTable, RetroTableCompact } from './RetroTable';
 export { RetroHeader } from './RetroHeader';
 export { RetroAgentTerminal, RetroTerminalLine } from './RetroAgentTerminal';
 export { RetroModal, RetroConfirmModal } from './RetroModal';
+export { RetroFeeTable, RetroFeeBreakdown } from './RetroFeeTable';
 

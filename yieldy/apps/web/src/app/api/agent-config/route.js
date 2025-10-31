@@ -27,9 +27,14 @@ export async function GET(request) {
           auto_invest_enabled,
           scan_interval_minutes,
           preferred_protocols,
-          blacklisted_protocols
+          blacklisted_protocols,
+          user_tier,
+          management_fee_percent,
+          performance_fee_percent,
+          total_aum
         ) VALUES (
-          1000, 10000, 5.0, 7, false, 1440, NULL, NULL
+          1000, 10000, 5.0, 7, false, 1440, NULL, NULL,
+          'community', 1.00, 18.00, 0
         ) RETURNING *
       `;
       return Response.json({ success: true, config: inserted[0] });
@@ -94,9 +99,14 @@ export async function PUT(request) {
           auto_invest_enabled,
           scan_interval_minutes,
           preferred_protocols,
-          blacklisted_protocols
+          blacklisted_protocols,
+          user_tier,
+          management_fee_percent,
+          performance_fee_percent,
+          total_aum
         ) VALUES (
-          1000, 10000, 5.0, 7, false, 1440, NULL, NULL
+          1000, 10000, 5.0, 7, false, 1440, NULL, NULL,
+          'community', 1.00, 18.00, 0
         )
       `;
       currentConfig = await sql`

@@ -1,12 +1,19 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   RetroHeader,
   RetroCard,
   RetroButton,
   RetroModal,
+  RetroFeeTable,
+  RetroFeeBreakdown,
 } from '../Retro';
 import { STATUS_ICONS } from '../../utils/asciiArt';
 import { useDarkMode } from '../../hooks/useDarkMode';
+import { 
+  calculateMonthlyManagementFee,
+  calculateAnnualManagementFee,
+  FEE_TIERS,
+} from '../../utils/feeCalculator';
 
 /**
  * Retro Settings Page
@@ -37,6 +44,31 @@ export function RetroSettings({
 
   const [showRevokeModal, setShowRevokeModal] = useState(false);
   const [isDark, toggleDark] = useDarkMode();
+  
+  // Fee structure state
+  const [feeData, setFeeData] = useState({
+    currentTier: config?.user_tier || 'community',
+    currentAUM: config?.total_aum || 0,
+    monthlyMgmtFee: 0,
+    annualMgmtFee: 0,
+  });
+
+  // Calculate fees when config changes
+  useEffect(() => {
+    if (config) {
+      const tier = config.user_tier || 'community';
+      const aum = parseFloat(config.total_aum || 0);
+      const monthly = calculateMonthlyManagementFee(aum, tier);
+      const annual = calculateAnnualManagementFee(aum, tier);
+      
+      setFeeData({
+        currentTier: tier,
+        currentAUM: aum,
+        monthlyMgmtFee: monthly,
+        annualMgmtFee: annual,
+      });
+    }
+  }, [config]);
 
   const navigation = [
     { label: 'DASHBOARD', href: '/', active: false },
@@ -283,6 +315,55 @@ export function RetroSettings({
               </RetroButton>
             </div>
           )}
+        </RetroCard>
+
+        {/* Fee Structure */}
+        <RetroCard title="FEE STRUCTURE" status="REVENUE" collapsible defaultExpanded={true}>
+          <div className="space-y-4">
+            {/* Current Fee Breakdown */}
+            <RetroFeeBreakdown
+              tier={feeData.currentTier}
+              aum={feeData.currentAUM}
+              monthlyMgmtFee={feeData.monthlyMgmtFee}
+              annualMgmtFee={feeData.annualMgmtFee}
+            />
+
+            {/* All Tiers Table */}
+            <div className="border-t-2 border-retro-gray-300 pt-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-pixel text-sm uppercase text-retro-fg">
+                  ALL AVAILABLE TIERS
+                </h3>
+                <RetroButton size="small">
+                  [Ξ UPGRADE TIER]
+                </RetroButton>
+              </div>
+              
+              <RetroFeeTable
+                currentTier={feeData.currentTier}
+                currentAUM={feeData.currentAUM}
+              />
+            </div>
+
+            {/* Revenue Model Explanation */}
+            <div className="border-t-2 border-retro-gray-300 pt-3 text-xs space-y-2 text-retro-gray-600">
+              <p className="font-semibold text-retro-fg uppercase">
+                How Cultiv8 Earns Revenue:
+              </p>
+              <p>
+                <span className="text-retro-green">●</span> <span className="font-semibold text-retro-fg">Management Fees:</span> Annual percentage of your AUM, collected monthly. Covers platform operations, security, and infrastructure.
+              </p>
+              <p>
+                <span className="text-retro-green">●</span> <span className="font-semibold text-retro-fg">Performance Fees:</span> Percentage of your realized profits. Collected when you withdraw gains. Aligns our success with yours.
+              </p>
+              <p className="text-retro-amber mt-2">
+                💎 Higher tiers = Lower management fees + Higher performance fees = Better for active traders
+              </p>
+              <p className="text-retro-gray-600 mt-2 text-xs">
+                This tiered structure ensures Cultiv8 maintains 15% net profit margins while providing competitive fees.
+              </p>
+            </div>
+          </div>
         </RetroCard>
 
         {/* Risk Framework */}

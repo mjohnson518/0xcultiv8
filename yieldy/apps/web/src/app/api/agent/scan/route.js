@@ -528,7 +528,7 @@ async function analyzeAndDecideInvestments(
     `;
 
     // Use portfolio optimizer for smart allocation
-    const { portfolioOptimizer } = await import('../utils/portfolioOptimizer');
+    const { portfolioOptimizer } = await import('../../utils/portfolioOptimizer.js');
     
     const availableForNewInvestments = effectiveMaxTotal - (currentTotalStart || 0);
     

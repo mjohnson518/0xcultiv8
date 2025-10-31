@@ -4,7 +4,16 @@
 	"type": "module",
 	"scripts": {
 		"dev": "react-router dev",
-		"typecheck": "react-router typegen && tsc --noEmit"
+		"build": "react-router build",
+		"start": "react-router-serve ./build/server/index.js",
+		"typecheck": "react-router typegen && tsc --noEmit",
+		"test": "node test/feeCalculator.test.js && node test/integration.test.js",
+		"test:fees": "node test/feeCalculator.test.js",
+		"test:integration": "node test/integration.test.js",
+		"deploy": "chmod +x scripts/*.sh && ./scripts/deploy.sh",
+		"deploy:check": "chmod +x scripts/pre-deploy.sh && ./scripts/pre-deploy.sh",
+		"migrate:cloud": "psql $DATABASE_URL -f scripts/migrate-to-cloud.sql",
+		"migrate:local": "psql $DATABASE_URL -f migrations/001_add_indexes.sql && psql $DATABASE_URL -f migrations/002_rename_tables.sql && psql $DATABASE_URL -f migrations/003_agent_decisions.sql && psql $DATABASE_URL -f migrations/004_add_fee_tiers.sql"
 	},
 	"dependencies": {
 		"@auth/core": "^0.37.2",

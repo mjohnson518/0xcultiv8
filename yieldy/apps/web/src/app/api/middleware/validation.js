@@ -37,17 +37,53 @@ export function validateRequest(schema) {
     } catch (error) {
       if (error instanceof ZodError) {
         // Format Zod validation errors into user-friendly messages
-        const formattedErrors = error.errors.map((err) => ({
-          field: err.path.join('.'),
-          message: err.message,
-          code: err.code
-        }));
+        const formattedErrors = error.errors.map((err) => {
+          const field = err.path.join('.');
+          let userMessage = err.message;
+
+          // Provide more specific user-friendly messages
+          switch (err.code) {
+            case 'too_small':
+              userMessage = `${field}: Must be at least ${err.minimum}${err.type === 'string' ? ' characters' : ''}`;
+              break;
+            case 'too_big':
+              userMessage = `${field}: Must be at most ${err.maximum}${err.type === 'string' ? ' characters' : ''}`;
+              break;
+            case 'invalid_type':
+              userMessage = `${field}: Expected ${err.expected}, but received ${err.received}`;
+              break;
+            case 'invalid_string':
+              if (err.validation === 'email') {
+                userMessage = `${field}: Please enter a valid email address`;
+              } else if (err.validation === 'url') {
+                userMessage = `${field}: Please enter a valid URL`;
+              } else {
+                userMessage = `${field}: ${err.message}`;
+              }
+              break;
+            default:
+              userMessage = `${field}: ${err.message}`;
+          }
+
+          return {
+            field: field || 'unknown',
+            message: userMessage,
+            code: err.code,
+            expected: err.expected,
+          };
+        });
+
+        // Create a summary message
+        const summary = formattedErrors.length === 1
+          ? formattedErrors[0].message
+          : `${formattedErrors.length} validation errors found`;
 
         return new Response(
           JSON.stringify({
             error: 'Validation failed',
-            message: 'Request data does not meet requirements',
-            details: formattedErrors
+            message: summary,
+            details: formattedErrors,
+            help: 'Please check the field requirements and try again'
           }),
           {
             status: 400,

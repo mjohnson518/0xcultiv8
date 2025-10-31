@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { ArrowUp, ArrowDown } from 'lucide-react';
 
 /**
@@ -23,9 +23,22 @@ export function RetroTable({
   onRowClick,
   selectedRows = new Set(),
   className = '',
+  mobileBreakpoint = 768, // px width for mobile/desktop switch
+  responsiveMode = 'scroll', // 'scroll' | 'stack' | 'hide-columns'
 }) {
   const [sortKey, setSortKey] = useState(null);
   const [sortDirection, setSortDirection] = useState('asc');
+  const [isMobile, setIsMobile] = useState(false);
+
+  // Detect mobile viewport
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const checkMobile = () => setIsMobile(window.innerWidth < mobileBreakpoint);
+      checkMobile();
+      window.addEventListener('resize', checkMobile);
+      return () => window.removeEventListener('resize', checkMobile);
+    }
+  }, [mobileBreakpoint]);
 
   const handleSort = (key) => {
     if (!columns.find(c => c.key === key)?.sortable) return;
@@ -45,9 +58,22 @@ export function RetroTable({
     right: 'text-right',
   };
 
+  // Filter columns for mobile if responsiveMode is 'hide-columns'
+  const visibleColumns = isMobile && responsiveMode === 'hide-columns'
+    ? columns.filter(col => col.mobileVisible !== false)
+    : columns;
+
   return (
-    <div className={`overflow-x-auto ${className}`}>
-      <table className="retro-table w-full border-collapse font-mono text-sm">
+    <div className={`relative ${className}`}>
+      {/* Mobile scroll indicator */}
+      {isMobile && responsiveMode === 'scroll' && (
+        <div className="text-xs text-retro-gray-600 mb-1 font-mono">
+          ← Scroll horizontally to see all columns →
+        </div>
+      )}
+      
+      <div className="overflow-x-auto border-2 border-retro-black">
+        <table className="retro-table w-full border-collapse font-mono text-sm min-w-full md:min-w-0">
         <thead>
           <tr>
             {selectable && (
@@ -59,12 +85,12 @@ export function RetroTable({
                 />
               </th>
             )}
-            {columns.map((column) => (
+            {visibleColumns.map((column) => (
               <th
                 key={column.key}
                 className={`
                   bg-retro-black text-retro-white border-2 border-retro-black px-3 py-2
-                  font-pixel uppercase text-xs
+                  font-pixel uppercase text-xs whitespace-nowrap
                   ${alignClasses[column.align || 'left']}
                   ${column.sortable ? 'cursor-pointer hover:bg-retro-gray-900' : ''}
                 `}
@@ -92,7 +118,7 @@ export function RetroTable({
           {data.length === 0 ? (
             <tr>
               <td
-                colSpan={columns.length + (selectable ? 1 : 0)}
+                colSpan={visibleColumns.length + (selectable ? 1 : 0)}
                 className="text-center py-8 text-retro-gray-600 border-2 border-retro-black"
               >
                 <span className="font-mono">NO DATA AVAILABLE</span>
@@ -122,7 +148,7 @@ export function RetroTable({
                       />
                     </td>
                   )}
-                  {columns.map((column) => (
+                  {visibleColumns.map((column) => (
                     <td
                       key={column.key}
                       className={`
@@ -139,6 +165,7 @@ export function RetroTable({
           )}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }

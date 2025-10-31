@@ -1,0 +1,100 @@
+{
+  "version": 2,
+  "framework": null,
+  "buildCommand": "npm run build",
+  "devCommand": "npm run dev",
+  "installCommand": "npm install",
+  "outputDirectory": "build/client",
+  "regions": ["iad1"],
+  "functions": {
+    "app/api/agent/scan/route.js": {
+      "maxDuration": 60,
+      "memory": 1024
+    },
+    "app/api/agent/run/route.js": {
+      "maxDuration": 60,
+      "memory": 1024
+    },
+    "app/api/fees/collect/route.js": {
+      "maxDuration": 30,
+      "memory": 512
+    },
+    "app/api/execute/submit/route.js": {
+      "maxDuration": 30,
+      "memory": 512
+    },
+    "app/api/**/*.js": {
+      "maxDuration": 10,
+      "memory": 256
+    }
+  },
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "X-Frame-Options",
+          "value": "DENY"
+        },
+        {
+          "key": "X-XSS-Protection",
+          "value": "1; mode=block"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        },
+        {
+          "key": "Permissions-Policy",
+          "value": "camera=(), microphone=(), geolocation=()"
+        }
+      ]
+    },
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        {
+          "key": "Access-Control-Allow-Credentials",
+          "value": "true"
+        },
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "https://0xcultiv8.vercel.app"
+        },
+        {
+          "key": "Access-Control-Allow-Methods",
+          "value": "GET,OPTIONS,PATCH,DELETE,POST,PUT"
+        },
+        {
+          "key": "Access-Control-Allow-Headers",
+          "value": "X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization"
+        }
+      ]
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/"
+    }
+  ],
+  "env": {
+    "NEXT_PUBLIC_APP_URL": "https://0xcultiv8.vercel.app",
+    "NODE_ENV": "production"
+  },
+  "crons": [
+    {
+      "path": "/api/fees/collect/monthly",
+      "schedule": "0 0 1 * *"
+    },
+    {
+      "path": "/api/agent/scheduler",
+      "schedule": "0 */6 * * *"
+    }
+  ]
+}
+

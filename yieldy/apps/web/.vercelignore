@@ -1,0 +1,28 @@
+# Vercel Ignore File
+# Files to exclude from Vercel deployment
+
+# Test files
+test/
+*.test.js
+*.test.ts
+
+# Documentation
+*.md
+!README.md
+
+# Development
+.env
+.env.local
+.env.*.local
+
+# Build artifacts (will be regenerated)
+.next/
+.turbo/
+node_modules/
+
+# Scripts (don't need in deployment)
+scripts/pre-deploy.sh
+scripts/post-deploy.sh
+scripts/deploy.sh
+scripts/rollback.sh
+

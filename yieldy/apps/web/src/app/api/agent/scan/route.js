@@ -403,7 +403,7 @@ export async function POST(request) {
 async function scanBlockchainForCultiv8Opportunities(blockchain, config) {
   try {
     // Dynamically import adapters to avoid circular dependencies
-    const { fetchAllProtocolData } = await import('../protocols/adapters');
+    const { fetchAllProtocolData } = await import('../../protocols/adapters.js');
     const { riskEngine } = await import('../utils/riskEngine');
 
     // Fetch real on-chain data

@@ -1,18 +1,22 @@
 /**
  * Production Server Entry Point
- * Starts the Hono server directly
+ * Starts the Hono server
  */
 
-// Import the built server module
-const serverModule = await import('./build/server/index.js');
+import { serve } from '@hono/node-server';
 
-// The server is already created and listening
-// This file just ensures the process stays alive
-console.log('✅ Cultiv8 server module loaded');
+// Import the built Hono app
+const { default: app } = await import('./build/server/index.js');
 
-// Keep process alive
-process.on('SIGTERM', () => {
-  console.log('Received SIGTERM, shutting down gracefully');
-  process.exit(0);
+const port = parseInt(process.env.PORT || '8080', 10);
+
+console.log(`🚀 Starting Cultiv8 on port ${port}...`);
+
+// Start the server
+serve({
+  fetch: app.fetch,
+  port,
+}, (info) => {
+  console.log(`✅ Cultiv8 live at http://localhost:${info.port}`);
 });
 

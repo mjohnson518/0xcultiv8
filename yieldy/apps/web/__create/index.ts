@@ -235,7 +235,16 @@ app.use('/api/auth/*', async (c, next) => {
 });
 app.route(API_BASENAME, api);
 
-export default await createHonoServer({
-  app,
-  defaultLogger: false,
-});
+// Only create server in actual runtime, not during Vite SSR build
+let server;
+if (import.meta.env?.DEV || process.env.NODE_ENV !== 'production' || typeof process.env.PORT !== 'undefined') {
+  server = await createHonoServer({
+    app,
+    defaultLogger: false,
+  });
+} else {
+  // During production build, just export the app
+  server = app;
+}
+
+export default server;

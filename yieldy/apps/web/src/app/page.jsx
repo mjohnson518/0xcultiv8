@@ -10,6 +10,8 @@ import { useCultiv8AgentData } from "@/hooks/useCultiv8AgentData";
 // Create a client
 const queryClient = new QueryClient();
 
+import { useWallet } from './providers/WalletProvider';
+
 function DashboardWrapper() {
   const {
     config,
@@ -17,13 +19,15 @@ function DashboardWrapper() {
     investments,
     scanMutation,
   } = useCultiv8AgentData();
+  
+  const { walletAddress, isConnected, connectWallet } = useWallet();
 
   const handleRunScan = async () => {
     try {
-      await scanMutation.mutateAsync({ 
-        blockchain: 'both', 
+      await scanMutation.mutateAsync({
+        blockchain: 'both',
         forceRun: true,
-        scanOnly: true 
+        scanOnly: true
       });
       console.log('Scan completed successfully');
     } catch (error) {
@@ -37,9 +41,9 @@ function DashboardWrapper() {
       config={config}
       opportunities={opportunities || []}
       investments={investments || []}
-      walletAddress={null}
-      isConnected={false}
-      onConnect={() => console.log('Connect wallet')}
+      walletAddress={walletAddress}
+      isConnected={isConnected}
+      onConnect={connectWallet}
       onRunScan={handleRunScan}
     />
   );

@@ -7,6 +7,18 @@ import { getToken } from '@auth/core/jwt';
  * @returns {Response|null} - Error response if unauthorized, null if authorized
  */
 export async function authMiddleware(request) {
+  // Demo mode bypass for testing
+  if (process.env.BYPASS_AUTH === 'true' || process.env.NEXT_PUBLIC_DEMO_MODE === 'true') {
+    console.warn('⚠️ Demo mode - auth bypassed');
+    request.user = {
+      id: 'demo-user',
+      address: '0xDemo0000000000000000000000000000000001',
+      isDemo: true,
+    };
+    return null; // No error, proceed
+  }
+  
+  // Existing auth logic...
   try {
     const token = await getToken({
       req: request,

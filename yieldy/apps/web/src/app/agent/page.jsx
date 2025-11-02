@@ -6,17 +6,21 @@ import { useCultiv8AgentData } from "@/hooks/useCultiv8AgentData";
 
 const queryClient = new QueryClient();
 
+import { useWallet } from '../providers/WalletProvider';
+
 function AgentWrapper() {
   const {
     config,
     scanMutation,
   } = useCultiv8AgentData();
+  
+  const { walletAddress, isConnected, connectWallet } = useWallet();
 
   return (
     <RetroAgent
-      walletAddress={null}
-      isConnected={false}
-      onConnect={() => console.log('Connect wallet')}
+      walletAddress={walletAddress}
+      isConnected={isConnected}
+      onConnect={connectWallet}
       agentStatus={{
         operational: config?.auto_invest_enabled || false,
         autoInvestEnabled: config?.auto_invest_enabled || false,

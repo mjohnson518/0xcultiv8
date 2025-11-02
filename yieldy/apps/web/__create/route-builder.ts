@@ -14,6 +14,15 @@ if (globalThis.fetch) {
   globalThis.fetch = updatedFetch;
 }
 
+// Add basic health check route that always works
+api.get('/health', (c) => {
+  return c.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development',
+  });
+});
+
 // Recursively find all route.js files
 async function findRouteFiles(dir: string): Promise<string[]> {
   const files = await readdir(dir);
@@ -63,17 +72,55 @@ function getHonoPath(routeFile: string): { name: string; pattern: string }[] {
   return transformedParts;
 }
 
+// Static imports for production (Vite resolves these at build time)
+const productionRoutes = import.meta.glob('../src/app/api/**/route.js', { eager: true });
+
 // Import and register all routes
 async function registerRoutes() {
-  // Skip route registration during build
-  if (process.env.VERCEL_ENV && !process.env.VERCEL_URL) {
-    console.log('Skipping route registration during build');
+  const isDev = import.meta.env?.DEV ?? false;
+  
+  if (!isDev) {
+    console.log('[Production] Registering routes from static imports');
+    
+    // In production, use Vite's glob imports (resolved at build time)
+    const routePaths = Object.keys(productionRoutes).sort((a, b) => b.length - a.length);
+    
+    for (const routePath of routePaths) {
+      try {
+        const route = productionRoutes[routePath] as any;
+        const methods = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'];
+        
+        for (const method of methods) {
+          if (route[method]) {
+            // Convert file path to API path
+            const apiPath = routePath
+              .replace('../src/app/api', '')
+              .replace('/route.js', '')
+              .replace(/\/\[([^\]]+)\]/g, '/:$1') // [param] -> :param
+              || '/';
+            
+            const handler: Handler = async (c) => {
+              const params = c.req.param();
+              return await route[method](c.req.raw, { params });
+            };
+            
+            const methodLower = method.toLowerCase();
+            (api as any)[methodLower](apiPath, handler);
+            console.log(`[Production] Registered ${method} ${apiPath}`);
+          }
+        }
+      } catch (error) {
+        console.error(`[Production] Error registering route ${routePath}:`, error);
+      }
+    }
+    
     return;
   }
 
+  // Development mode: scan filesystem for hot-reloading
   const routeFiles = (
     await findRouteFiles(__dirname).catch((error) => {
-      console.error('Error finding route files:', error);
+      console.warn('[Dev] Could not scan route files:', error.message);
       return [];
     })
   )
@@ -82,7 +129,7 @@ async function registerRoutes() {
       return b.length - a.length;
     });
 
-  // Clear existing routes
+  // Clear existing routes in dev
   api.routes = [];
 
   for (const routeFile of routeFiles) {

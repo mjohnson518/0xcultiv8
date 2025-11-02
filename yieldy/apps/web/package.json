@@ -6,7 +6,8 @@
 	"scripts": {
 		"dev": "react-router dev",
 		"build": "react-router build",
-		"start": "react-router-serve ./build/server/index.js",
+		"start": "node server-start.js",
+		"start:react-router": "react-router-serve ./build/server/index.js",
 		"typecheck": "react-router typegen && tsc --noEmit",
 		"test": "node test/feeCalculator.test.js && node test/integration.test.js",
 		"test:fees": "node test/feeCalculator.test.js",

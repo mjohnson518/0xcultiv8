@@ -1,21 +1,18 @@
 /**
  * Production Server Entry Point
- * Starts the Hono server directly without react-router-serve CLI
+ * Starts the Hono server directly
  */
 
-import { serve } from '@hono/node-server';
+// Import the built server module
+const serverModule = await import('./build/server/index.js');
 
-// Import the built server
-const { default: app } = await import('./build/server/index.js');
+// The server is already created and listening
+// This file just ensures the process stays alive
+console.log('✅ Cultiv8 server module loaded');
 
-const port = parseInt(process.env.PORT || '8080', 10);
-
-console.log(`🚀 Starting Cultiv8 server on port ${port}...`);
-
-serve({
-  fetch: app.fetch,
-  port,
-}, (info) => {
-  console.log(`✅ Server running at http://localhost:${info.port}`);
+// Keep process alive
+process.on('SIGTERM', () => {
+  console.log('Received SIGTERM, shutting down gracefully');
+  process.exit(0);
 });
 

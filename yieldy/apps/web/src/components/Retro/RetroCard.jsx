@@ -104,16 +104,16 @@ export function RetroCard({
         </div>
       )}
 
-      {/* Footer with ASCII decoration */}
-      {footer && isExpanded && (
-        <div className={`
-          bg-retro-gray-100
-          px-3 py-2
-          text-xs
-          font-mono
-          border-t-3 retro-border
-          flex items-center justify-between
-        `}>
+          {/* Footer with ASCII decoration */}
+          {footer && isExpanded && (
+            <div className={`
+              bg-retro-bg
+              px-3 py-2
+              text-xs
+              font-mono
+              border-t-3 retro-border
+              flex items-center justify-between
+            `}>
           <span className="text-retro-gray-600">└{'─'.repeat(50)}┘</span>
           <span className="text-retro-fg">{footer}</span>
         </div>

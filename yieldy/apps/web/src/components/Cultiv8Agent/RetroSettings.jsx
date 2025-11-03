@@ -28,6 +28,7 @@ export function RetroSettings({
   onSaveConfig,
   onUpdateLimits,
   onRevoke,
+  onAuthorize,
 }) {
   const [formData, setFormData] = useState({
     autoInvest: config?.auto_invest_enabled || false,
@@ -310,7 +311,10 @@ export function RetroSettings({
               <p className="text-xs">
                 Authorize the agent to enable autonomous yield farming
               </p>
-              <RetroButton variant="primary">
+              <RetroButton 
+                variant="primary"
+                onClick={onAuthorize || onConnect}
+              >
                 AUTHORIZE AGENT
               </RetroButton>
             </div>

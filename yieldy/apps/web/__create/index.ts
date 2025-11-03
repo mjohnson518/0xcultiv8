@@ -235,19 +235,9 @@ app.use('/api/auth/*', async (c, next) => {
 });
 app.route(API_BASENAME, api);
 
-// In production, export just the Hono app (server-start.js handles serving)
-// In development, use createHonoServer for React Router integration
-const isDev = import.meta.env?.DEV ?? false;
-
-let server;
-if (isDev) {
-  server = await createHonoServer({
-    app,
-    defaultLogger: false,
-  });
-} else {
-  // Production: export raw Hono app
-  server = app;
-}
-
-export default server;
+// Always use createHonoServer for React Router integration
+// This creates the server but doesn't start it (server-start.js does that)
+export default await createHonoServer({
+  app,
+  defaultLogger: false,
+});

@@ -79,7 +79,14 @@ export function RetroHeader({
               )}
             </div>
             {!isConnected && onConnect && (
-              <RetroButton onClick={onConnect} size="small" variant="primary">
+              <RetroButton 
+                onClick={() => {
+                  console.log('Connect button clicked!');
+                  onConnect();
+                }} 
+                size="small" 
+                variant="primary"
+              >
                 CONNECT
               </RetroButton>
             )}

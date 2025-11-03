@@ -74,10 +74,10 @@ export function RetroAgent({
 
         {/* Control Buttons */}
         <div className="flex flex-wrap gap-2">
-          <RetroButton 
-            variant="primary" 
+          <RetroButton
+            variant="primary"
             onClick={handleRunAgent}
-            disabled={isRunning || !isConnected}
+            disabled={isRunning}
           >
             {isRunning ? 'RUNNING...' : 'RUN AGENT'}
           </RetroButton>

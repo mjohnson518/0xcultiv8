@@ -453,11 +453,8 @@ ${transaction_type === 'rebalance' && pending_transactions.length > 0 ? `
     return {
       level: risk,
       protection,
-      reasoning: this.getMEVReasoningreturn {
-        level: risk,
-        protection,
-        reasoning: this.getMEVReasoning(transactionType, amountUSD),
-      };
+      reasoning: this.getMEVReasoning(transactionType, amountUSD),
+    };
   }
 
   /**

@@ -93,16 +93,28 @@ export function useCultiv8AgentData() {
       const response = await fetch("/api/agent/scan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ blockchain, forceRun }),
+        body: JSON.stringify({ blockchain, forceRun, scanOnly: true }),
       });
-      if (!response.ok) throw new Error("Failed to run scan");
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('Scan API error:', errorData);
+        throw new Error(errorData.error || errorData.details || `Scan failed (${response.status})`);
+      }
+      
       return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
+      console.log('Scan successful:', data);
       queryClient.invalidateQueries({
         queryKey: ["cultiv8-opportunities"],
       });
       queryClient.invalidateQueries({ queryKey: ["investments"] });
+      alert(`✅ Scan completed!\nFound ${data.opportunities?.length || 0} opportunities`);
+    },
+    onError: (error) => {
+      console.error('Scan mutation error:', error);
+      alert(`❌ Scan failed: ${error.message}`);
     },
   });
 

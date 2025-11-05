@@ -5,7 +5,7 @@ import { rateLimitMiddleware } from '../../middleware/rateLimit';
 import { authMiddleware } from '../../middleware/auth';
 import { checkEmergencyPause } from '../../utils/circuitBreaker';
 import { auditLog, AUDIT_ACTIONS, getIPFromRequest, getRequestIDFromRequest } from '../../utils/auditLogger';
-import { log } from '../../utils/logger';
+import { log, logSecurityEvent } from '../../utils/logger';
 import { agentMemory } from '../memory/memory-manager.js';
 import { safetyController } from '../safety/safety-controller.js';
 

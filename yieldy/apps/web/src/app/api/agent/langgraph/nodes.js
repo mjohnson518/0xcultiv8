@@ -53,10 +53,10 @@ Current Portfolio:
 - Available Funds: $${state.availableFunds}
 - Risk Tolerance: ${state.riskTolerance}/10
 - Max Per Opportunity: $${state.maxInvestmentPerOpp}
-- Active Positions: ${state.currentPositions.length}
+- Active Positions: ${state.currentPositions?.length || 0}
 
 Active Positions:
-${state.currentPositions.map(p => `  - ${p.blockchain}: $${p.amount} at ${p.expected_apy}% APY`).join('\n') || '  None'}
+${state.currentPositions?.map(p => `  - ${p.blockchain}: $${p.amount} at ${p.expected_apy}% APY`).join('\n') || '  None'}
 
 Available Opportunities:
 ${allOpportunities.map(o => `  - ${o.protocol} (${o.chain}): ${o.apy}% APY, TVL: $${(o.tvl / 1e6).toFixed(1)}M`).join('\n')}

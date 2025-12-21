@@ -1,0 +1,1058 @@
+openapi: 3.1.0
+info:
+  title: 0xCultiv8 API
+  version: 1.0.0
+  description: |
+    AI-powered autonomous DeFi investment agent API.
+
+    ## Overview
+    0xCultiv8 discovers, analyzes, and manages DeFi investments across Ethereum and Base chains.
+    The agent uses AI to evaluate opportunities and execute transactions based on user-defined parameters.
+
+    ## Authentication
+    All authenticated endpoints require wallet signature authentication using EIP-191.
+    1. Request a nonce from `/auth/nonce`
+    2. Sign the nonce message with your wallet
+    3. Exchange the signature for a JWT token at `/auth/token`
+    4. Include the JWT in the `Authorization: Bearer <token>` header
+
+    ## Rate Limits
+    - General endpoints: 100 requests/hour
+    - Investment endpoints: 10 requests/hour
+    - Scan endpoints: 20 requests/hour
+
+    ## Error Handling
+    All errors follow a consistent format with `success: false`, `error` message, and `code`.
+  contact:
+    name: 0xCultiv8 Support
+    email: support@cultiv8.xyz
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: https://cultiv8.xyz/api
+    description: Production
+  - url: https://staging.cultiv8.xyz/api
+    description: Staging
+  - url: http://localhost:3000/api
+    description: Local Development
+
+tags:
+  - name: Health
+    description: System health and monitoring
+  - name: Authentication
+    description: Wallet authentication endpoints
+  - name: Agent
+    description: AI agent operations
+  - name: Investments
+    description: Investment management
+  - name: Fees
+    description: Fee calculations and tiers
+  - name: Emergency
+    description: Emergency control endpoints
+  - name: Audit
+    description: Audit logging
+
+paths:
+  # ============================================================================
+  # Health Endpoints
+  # ============================================================================
+  /health:
+    get:
+      tags: [Health]
+      summary: System health check
+      description: Returns overall system health and individual component status
+      operationId: getHealth
+      responses:
+        '200':
+          description: System health status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /metrics:
+    get:
+      tags: [Health]
+      summary: Prometheus metrics
+      description: Returns Prometheus-formatted metrics for monitoring
+      operationId: getMetrics
+      responses:
+        '200':
+          description: Prometheus metrics
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: |
+                  # HELP http_requests_total Total HTTP requests
+                  # TYPE http_requests_total counter
+                  http_requests_total{method="GET",status="200"} 1234
+
+  # ============================================================================
+  # Authentication Endpoints
+  # ============================================================================
+  /auth/nonce:
+    get:
+      tags: [Authentication]
+      summary: Get authentication nonce
+      description: Generates a nonce for wallet signature authentication
+      operationId: getNonce
+      parameters:
+        - name: walletAddress
+          in: query
+          required: true
+          schema:
+            type: string
+            pattern: '^0x[a-fA-F0-9]{40}$'
+          example: '0x742d35Cc6634C0532925a3b844Bc9e7595f2b0dA'
+      responses:
+        '200':
+          description: Nonce generated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NonceResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /auth/token:
+    post:
+      tags: [Authentication]
+      summary: Exchange signature for token
+      description: Validates wallet signature and issues JWT token
+      operationId: getToken
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenRequest'
+      responses:
+        '200':
+          description: Token issued successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ============================================================================
+  # Agent Endpoints
+  # ============================================================================
+  /agent/run:
+    post:
+      tags: [Agent]
+      summary: Start agent execution
+      description: |
+        Initiates the AI agent to analyze market opportunities and optionally execute investments.
+        The agent follows a 5-step process:
+        1. Analyze market conditions
+        2. Generate investment strategies
+        3. Select optimal strategy
+        4. Build execution plan
+        5. Execute transactions (if approved)
+      operationId: runAgent
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentRunRequest'
+      responses:
+        '200':
+          description: Agent execution started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentRunResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/CircuitBreakerOpen'
+
+  /agent/status:
+    get:
+      tags: [Agent]
+      summary: Get agent execution status
+      description: Returns the current status of an agent execution session
+      operationId: getAgentStatus
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: sessionId
+          in: query
+          required: true
+          schema:
+            type: string
+          example: session_abc123
+      responses:
+        '200':
+          description: Agent status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentStatusResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /agent/scan:
+    post:
+      tags: [Agent]
+      summary: Scan for opportunities
+      description: Scans DeFi protocols for investment opportunities without executing
+      operationId: scanOpportunities
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScanRequest'
+      responses:
+        '200':
+          description: Opportunities found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScanResponse'
+
+  /agent/history:
+    get:
+      tags: [Agent]
+      summary: Get execution history
+      description: Returns paginated list of past agent executions for the user
+      operationId: getAgentHistory
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            default: 10
+            maximum: 100
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [completed, failed, cancelled]
+      responses:
+        '200':
+          description: Execution history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HistoryResponse'
+
+  # ============================================================================
+  # Investment Endpoints
+  # ============================================================================
+  /investments:
+    get:
+      tags: [Investments]
+      summary: Get user investments
+      description: Returns all active investments for the authenticated user
+      operationId: getInvestments
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: User investments
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvestmentsResponse'
+
+  /execute/preview:
+    post:
+      tags: [Investments]
+      summary: Preview investment execution
+      description: Returns estimated gas, fees, and expected outcome without executing
+      operationId: previewExecution
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExecutePreviewRequest'
+      responses:
+        '200':
+          description: Execution preview
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecutePreviewResponse'
+
+  /execute/submit:
+    post:
+      tags: [Investments]
+      summary: Submit investment transaction
+      description: Executes an investment transaction on-chain
+      operationId: submitExecution
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExecuteSubmitRequest'
+      responses:
+        '200':
+          description: Transaction submitted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecuteSubmitResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  # ============================================================================
+  # Fee Endpoints
+  # ============================================================================
+  /fees/calculate:
+    post:
+      tags: [Fees]
+      summary: Calculate fees
+      description: Calculates management and performance fees for an investment
+      operationId: calculateFees
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FeeCalculateRequest'
+      responses:
+        '200':
+          description: Fee calculation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FeeCalculateResponse'
+
+  /user/tier:
+    get:
+      tags: [Fees]
+      summary: Get user tier
+      description: Returns the user's current tier and benefits
+      operationId: getUserTier
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: User tier information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TierResponse'
+
+  # ============================================================================
+  # Emergency Endpoints
+  # ============================================================================
+  /emergency/pause:
+    post:
+      tags: [Emergency]
+      summary: Pause system operations
+      description: Admin-only endpoint to pause all investment operations
+      operationId: emergencyPause
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PauseRequest'
+      responses:
+        '200':
+          description: System paused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PauseResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /emergency/resume:
+    post:
+      tags: [Emergency]
+      summary: Resume system operations
+      description: Admin-only endpoint to resume operations after emergency pause
+      operationId: emergencyResume
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResumeRequest'
+      responses:
+        '200':
+          description: System resumed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResumeResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  # ============================================================================
+  # Audit Endpoints
+  # ============================================================================
+  /audit-logs:
+    get:
+      tags: [Audit]
+      summary: Get audit logs
+      description: Returns audit logs for administrative review
+      operationId: getAuditLogs
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: action
+          in: query
+          schema:
+            type: string
+            enum: [INVESTMENT_EXECUTED, AUTH_SUCCESS, AUTH_FAILED, EMERGENCY_PAUSE, SECURITY_EVENT]
+        - name: startDate
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: endDate
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+            maximum: 100
+      responses:
+        '200':
+          description: Audit logs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditLogsResponse'
+
+# ============================================================================
+# Components
+# ============================================================================
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  # ============================================================================
+  # Response Templates
+  # ============================================================================
+  responses:
+    BadRequest:
+      description: Invalid request parameters
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error: Invalid request parameters
+            code: BAD_REQUEST
+
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error: Authentication required
+            code: UNAUTHORIZED
+
+    Forbidden:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error: Admin access required
+            code: FORBIDDEN
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error: Resource not found
+            code: NOT_FOUND
+
+    RateLimited:
+      description: Rate limit exceeded
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RateLimitResponse'
+
+    CircuitBreakerOpen:
+      description: Service temporarily unavailable
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error: Service temporarily unavailable
+            code: CIRCUIT_BREAKER_OPEN
+            retryAfter: 60000
+
+  # ============================================================================
+  # Schemas
+  # ============================================================================
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: string
+        code:
+          type: string
+        requestId:
+          type: string
+      required: [success, error, code]
+
+    RateLimitResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: string
+          example: Rate limit exceeded
+        code:
+          type: string
+          example: RATE_LIMITED
+        retryAfter:
+          type: integer
+          description: Seconds until rate limit resets
+        limit:
+          type: integer
+        remaining:
+          type: integer
+
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy]
+        timestamp:
+          type: string
+          format: date-time
+        checks:
+          type: object
+          properties:
+            database:
+              type: string
+            cache:
+              type: string
+            ethereum_rpc:
+              type: string
+            base_rpc:
+              type: string
+        version:
+          type: string
+
+    NonceResponse:
+      type: object
+      properties:
+        nonce:
+          type: string
+        message:
+          type: string
+        expiresAt:
+          type: integer
+          description: Unix timestamp
+
+    TokenRequest:
+      type: object
+      properties:
+        walletAddress:
+          type: string
+          pattern: '^0x[a-fA-F0-9]{40}$'
+        signature:
+          type: string
+        nonce:
+          type: string
+      required: [walletAddress, signature, nonce]
+
+    TokenResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        token:
+          type: string
+        expiresIn:
+          type: integer
+          description: Token validity in seconds
+        tier:
+          type: string
+          enum: [community, pro, institutional, enterprise]
+        walletAddress:
+          type: string
+
+    AgentRunRequest:
+      type: object
+      properties:
+        chain:
+          type: string
+          enum: [ethereum, base]
+        riskTolerance:
+          type: string
+          enum: [low, medium, high]
+        maxInvestmentUSD:
+          type: number
+          minimum: 100
+          maximum: 1000000
+        protocols:
+          type: array
+          items:
+            type: string
+          description: Optional filter for specific protocols
+        autoExecute:
+          type: boolean
+          default: false
+          description: Whether to auto-execute recommended strategy
+      required: [chain, riskTolerance, maxInvestmentUSD]
+
+    AgentRunResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        sessionId:
+          type: string
+        status:
+          type: string
+          enum: [running, completed, failed]
+        estimatedDuration:
+          type: integer
+          description: Estimated completion time in milliseconds
+
+    AgentStatusResponse:
+      type: object
+      properties:
+        sessionId:
+          type: string
+        status:
+          type: string
+          enum: [running, completed, failed, cancelled]
+        currentNode:
+          type: string
+        nodesCompleted:
+          type: array
+          items:
+            type: string
+        progress:
+          type: integer
+          minimum: 0
+          maximum: 100
+        result:
+          type: object
+          nullable: true
+        duration:
+          type: integer
+        error:
+          type: string
+          nullable: true
+
+    ScanRequest:
+      type: object
+      properties:
+        chain:
+          type: string
+          enum: [ethereum, base]
+        riskTolerance:
+          type: string
+          enum: [low, medium, high]
+        protocols:
+          type: array
+          items:
+            type: string
+
+    ScanResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        opportunities:
+          type: array
+          items:
+            $ref: '#/components/schemas/Opportunity'
+        scanDuration:
+          type: integer
+        timestamp:
+          type: string
+          format: date-time
+
+    Opportunity:
+      type: object
+      properties:
+        id:
+          type: string
+        protocol:
+          type: string
+        chain:
+          type: string
+        asset:
+          type: string
+        apy:
+          type: number
+        tvl:
+          type: number
+        riskScore:
+          type: number
+          minimum: 1
+          maximum: 10
+        recommendation:
+          type: string
+          enum: [strong_buy, buy, hold, avoid]
+
+    HistoryResponse:
+      type: object
+      properties:
+        executions:
+          type: array
+          items:
+            type: object
+            properties:
+              sessionId:
+                type: string
+              timestamp:
+                type: string
+                format: date-time
+              status:
+                type: string
+              result:
+                type: string
+              transactionHash:
+                type: string
+              amountUSD:
+                type: number
+              protocol:
+                type: string
+        total:
+          type: integer
+        page:
+          type: integer
+        pageSize:
+          type: integer
+
+    InvestmentsResponse:
+      type: object
+      properties:
+        investments:
+          type: array
+          items:
+            $ref: '#/components/schemas/Investment'
+        totalValue:
+          type: number
+        totalPnL:
+          type: number
+        totalPnLPercent:
+          type: number
+
+    Investment:
+      type: object
+      properties:
+        id:
+          type: string
+        protocol:
+          type: string
+        chain:
+          type: string
+        asset:
+          type: string
+        principal:
+          type: number
+        currentValue:
+          type: number
+        unrealizedPnL:
+          type: number
+        apy:
+          type: number
+        createdAt:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [active, closed, liquidated]
+
+    ExecutePreviewRequest:
+      type: object
+      properties:
+        protocol:
+          type: string
+        action:
+          type: string
+          enum: [deposit, withdraw]
+        amount:
+          type: number
+          minimum: 100
+        asset:
+          type: string
+        chain:
+          type: string
+          enum: [ethereum, base]
+      required: [protocol, action, amount, asset, chain]
+
+    ExecutePreviewResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        preview:
+          type: object
+          properties:
+            estimatedGas:
+              type: integer
+            gasPrice:
+              type: integer
+            gasCostUSD:
+              type: number
+            managementFeeUSD:
+              type: number
+            performanceFeePercent:
+              type: number
+            slippage:
+              type: number
+            minReceived:
+              type: number
+            route:
+              type: array
+              items:
+                type: string
+            warnings:
+              type: array
+              items:
+                type: string
+
+    ExecuteSubmitRequest:
+      type: object
+      properties:
+        protocol:
+          type: string
+        action:
+          type: string
+          enum: [deposit, withdraw]
+        amount:
+          type: number
+        asset:
+          type: string
+        chain:
+          type: string
+        signature:
+          type: string
+          description: User signature authorizing the transaction
+      required: [protocol, action, amount, asset, chain, signature]
+
+    ExecuteSubmitResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        transactionHash:
+          type: string
+        status:
+          type: string
+          enum: [pending, confirmed, failed]
+        investmentId:
+          type: string
+        estimatedConfirmation:
+          type: integer
+          description: Estimated confirmation time in milliseconds
+
+    FeeCalculateRequest:
+      type: object
+      properties:
+        amount:
+          type: number
+        tier:
+          type: string
+          enum: [community, pro, institutional, enterprise]
+        profit:
+          type: number
+        duration:
+          type: integer
+          description: Investment duration in milliseconds
+
+    FeeCalculateResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        fees:
+          type: object
+          properties:
+            managementFee:
+              type: number
+            performanceFee:
+              type: number
+            totalFees:
+              type: number
+            effectiveRate:
+              type: number
+        breakdown:
+          type: object
+          properties:
+            managementFeePercent:
+              type: number
+            performanceFeePercent:
+              type: number
+            proRataFactor:
+              type: number
+
+    TierResponse:
+      type: object
+      properties:
+        walletAddress:
+          type: string
+        tier:
+          type: string
+          enum: [community, pro, institutional, enterprise]
+        aum:
+          type: number
+        tierThresholds:
+          type: object
+          properties:
+            current:
+              type: object
+              properties:
+                min:
+                  type: number
+                name:
+                  type: string
+            next:
+              type: object
+              properties:
+                min:
+                  type: number
+                name:
+                  type: string
+        benefits:
+          type: object
+          properties:
+            managementFeePercent:
+              type: number
+            performanceFeePercent:
+              type: number
+            prioritySupport:
+              type: boolean
+            customStrategies:
+              type: boolean
+
+    PauseRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+        adminSignature:
+          type: string
+      required: [reason, adminSignature]
+
+    PauseResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        pausedAt:
+          type: string
+          format: date-time
+        reason:
+          type: string
+        pausedBy:
+          type: string
+        status:
+          type: string
+
+    ResumeRequest:
+      type: object
+      properties:
+        authorizedBy:
+          type: string
+        adminSignature:
+          type: string
+      required: [authorizedBy, adminSignature]
+
+    ResumeResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        resumedAt:
+          type: string
+          format: date-time
+        authorizedBy:
+          type: string
+        status:
+          type: string
+        pauseDuration:
+          type: integer
+
+    AuditLogsResponse:
+      type: object
+      properties:
+        logs:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              action:
+                type: string
+              walletAddress:
+                type: string
+              timestamp:
+                type: string
+                format: date-time
+              details:
+                type: object
+              severity:
+                type: string
+                enum: [info, warning, error, critical]
+        total:
+          type: integer
+        filters:
+          type: object

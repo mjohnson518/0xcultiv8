@@ -2,12 +2,19 @@
  * Agent Scan Endpoint
  * Fetches live DeFi opportunities from protocol adapters
  * Falls back to demo data when RPC URLs are not configured
+ *
+ * Access: Authenticated users with credits OR x402 payment
  */
 
 import { fetchAllProtocolData, getSupportedProtocols } from '../../protocols/adapters.js';
 import { optionalAuth } from '../../middleware/auth.js';
 import { log as logger } from '../../utils/logger.js';
+import { checkPaymentOrCredits } from '../../middleware/x402Payment.js';
+import { rateLimitMiddleware } from '../../middleware/rateLimit.js';
 // Note: RiskEngine is dynamically imported only when needed (not in demo mode)
+
+// x402 pricing for this endpoint
+const ENDPOINT_PRICE = 0.10; // $0.10 USD
 
 // Protocol metadata for risk calculation
 const PROTOCOL_METADATA = {
@@ -176,9 +183,27 @@ export async function POST(request) {
   const startTime = Date.now();
   const demoMode = isDemoMode();
 
+  // Rate limiting first (before any payment/auth checks)
+  const rateLimitError = await rateLimitMiddleware(request, 'scan');
+  if (rateLimitError) return rateLimitError;
+
+  // x402 Payment or Credits check
+  // Users with tier credits get free access; others pay per-request
+  const paymentResult = await checkPaymentOrCredits(request, {
+    endpoint: '/api/agent/scan',
+    basePrice: ENDPOINT_PRICE,
+    description: 'DeFi opportunity scanning and risk analysis',
+  });
+
+  if (!paymentResult.proceed) {
+    return paymentResult.response;
+  }
+
   try {
-    // Optional auth - attach user if authenticated
-    await optionalAuth(request);
+    // Optional auth - attach user if authenticated (may already be set by payment check)
+    if (!request.user) {
+      await optionalAuth(request);
+    }
 
     // Parse request body
     const body = await request.json().catch(() => ({}));
@@ -325,6 +350,10 @@ export async function POST(request) {
         chainsScanned: chainsToScan,
         duration,
         demoMode,
+        x402: {
+          paid: paymentResult.paymentUsed,
+          usedCredits: paymentResult.creditsUsed,
+        },
       },
       errors: errors.length > 0 ? errors : undefined,
     });

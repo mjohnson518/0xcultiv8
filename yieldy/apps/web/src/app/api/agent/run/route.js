@@ -2,30 +2,54 @@ import { buildCultiv8AgentWithCheckpointing } from '../langgraph/graph.js';
 import { createInitialState } from '../langgraph/state';
 import sql from '../../utils/sql';
 import { rateLimitMiddleware } from '../../middleware/rateLimit';
-import { authMiddleware } from '../../middleware/auth';
+import { authMiddleware, optionalAuth } from '../../middleware/auth';
 import { checkEmergencyPause } from '../../utils/circuitBreaker';
 import { auditLog, AUDIT_ACTIONS, getIPFromRequest, getRequestIDFromRequest } from '../../utils/auditLogger';
 import { log, logSecurityEvent } from '../../utils/logger';
 import { agentMemory } from '../memory/memory-manager.js';
 import { safetyController } from '../safety/safety-controller.js';
+import { checkPaymentOrCredits } from '../../middleware/x402Payment.js';
+
+// x402 pricing for this endpoint
+const ENDPOINT_PRICE = 0.50; // $0.50 USD
 
 /**
  * Agent Execution Endpoint
  * POST /api/agent/run
  * Runs the LangGraph AI agent for yield farming decisions
+ *
+ * Access: Authenticated users with credits OR x402 payment
  */
 export async function POST(request) {
-  // Authentication required
-  const authError = await authMiddleware(request);
-  if (authError) return authError;
+  // Rate limiting first (before any payment/auth checks)
+  const rateLimitError = await rateLimitMiddleware(request, 'scan');
+  if (rateLimitError) return rateLimitError;
 
   // Check emergency pause
   const pauseError = await checkEmergencyPause(request);
   if (pauseError) return pauseError;
 
-  // Rate limiting
-  const rateLimitError = await rateLimitMiddleware(request, 'scan');
-  if (rateLimitError) return rateLimitError;
+  // x402 Payment or Credits check
+  // Users with tier credits get free access; others pay per-request
+  const paymentResult = await checkPaymentOrCredits(request, {
+    endpoint: '/api/agent/run',
+    basePrice: ENDPOINT_PRICE,
+    description: 'AI agent execution for yield optimization strategy',
+  });
+
+  if (!paymentResult.proceed) {
+    return paymentResult.response;
+  }
+
+  // If paid without auth, try optional auth for user context
+  // If credits used, user is already authenticated
+  if (paymentResult.paymentUsed && !request.user) {
+    await optionalAuth(request);
+  } else if (!paymentResult.creditsUsed) {
+    // Require auth if not using credits or payment
+    const authError = await authMiddleware(request);
+    if (authError) return authError;
+  }
 
   try {
     const body = await request.json();
@@ -189,6 +213,10 @@ export async function POST(request) {
         strategiesGenerated: finalState.strategies?.length || 0,
         selectedStrategy: finalState.selectedStrategy?.protocol,
         needsApproval: finalState.humanApprovalRequired,
+        x402: {
+          paid: paymentResult.paymentUsed,
+          usedCredits: paymentResult.creditsUsed,
+        },
       },
       ip_address: getIPFromRequest(request),
       request_id: getRequestIDFromRequest(request),

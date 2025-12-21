@@ -15,6 +15,7 @@ Autonomous AI-powered DeFi yield optimization agent for Ethereum and Base.
 - **Protocol Integration** - Aave V3, Compound V3, Morpho Blue, Ethena
 - **On-Chain Authorization** - User-controlled spending limits via EIP-8004
 - **Security Controls** - Circuit breakers, rate limiting, audit logging, MEV protection
+- **API Monetization** - x402 payment protocol with tier-based credits
 
 ## Architecture
 
@@ -22,7 +23,7 @@ Autonomous AI-powered DeFi yield optimization agent for Ethereum and Base.
 ┌─────────────────────────────────────────────────────────────┐
 │  Frontend (React 18, TanStack Query, Tailwind CSS)          │
 ├─────────────────────────────────────────────────────────────┤
-│  API Layer (Hono.js, Auth, Rate Limiting, CSRF Protection)  │
+│  API Layer (Hono.js, Auth, Rate Limiting, x402 Payments)    │
 ├─────────────────────────────────────────────────────────────┤
 │  LangGraph Agent                                            │
 │  ├─ Analyze Market    ─── Claude Sonnet 4                   │
@@ -77,6 +78,11 @@ BASE_RPC_URL=https://...
 ANTHROPIC_API_KEY=sk-ant-...
 OPENAI_API_KEY=sk-...
 AUTH_SECRET=...  # min 32 characters
+
+# x402 Payment Protocol (optional - enables API monetization)
+X402_ENABLED=true
+X402_PAYMENT_RECEIVER=0x...  # Your USDC address on Base
+X402_NETWORK=eip155:8453     # Base mainnet
 ```
 
 ## Project Structure
@@ -103,17 +109,20 @@ AUTH_SECRET=...  # min 32 characters
 
 ## API Endpoints
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/health` | GET | System health check |
-| `/api/auth/nonce` | GET | Get authentication nonce |
-| `/api/auth/token` | POST | Exchange signature for JWT |
-| `/api/agent/run` | POST | Execute agent |
-| `/api/agent/scan` | POST | Scan opportunities |
-| `/api/execute/preview` | POST | Preview transaction |
-| `/api/execute/submit` | POST | Submit transaction |
-| `/api/authorization` | GET | Get user authorization status |
-| `/api/emergency/pause` | POST | Emergency pause (admin) |
+| Endpoint | Method | Description | Price |
+|----------|--------|-------------|-------|
+| `/api/health` | GET | System health check | Free |
+| `/api/auth/nonce` | GET | Get authentication nonce | Free |
+| `/api/auth/token` | POST | Exchange signature for JWT | Free |
+| `/api/agent/run` | POST | Execute agent | $0.50 |
+| `/api/agent/scan` | POST | Scan opportunities | $0.10 |
+| `/api/credits` | GET | Get user credit balance | Free |
+| `/api/execute/preview` | POST | Preview transaction | Free |
+| `/api/execute/submit` | POST | Submit transaction | Free |
+| `/api/authorization` | GET | Get user authorization status | Free |
+| `/api/emergency/pause` | POST | Emergency pause (admin) | Free |
+
+*Pricing applies when x402 is enabled. Tier users receive free monthly credits.*
 
 ## Security
 
@@ -125,6 +134,26 @@ See [`docs/SECURITY-MODEL.md`](docs/SECURITY-MODEL.md) for details.
 - **MEV Protection** - Flashbots Protect integration
 - **Rate Limiting** - Tiered limits by endpoint
 - **Circuit Breaker** - Automatic pause on failures
+
+## Payments (x402)
+
+The platform uses [x402](https://x402.org) for HTTP-native payments on Base (USDC).
+
+### Tier Credits (Monthly)
+
+| Tier | Agent Run | Agent Scan | Payment Discount |
+|------|-----------|------------|------------------|
+| Community | 10 | 50 | 0% |
+| Pro | 100 | 500 | 20% |
+| Institutional | 500 | 2,000 | 40% |
+| Enterprise | Unlimited | Unlimited | 50% |
+
+### How It Works
+
+1. **Authenticated users** with remaining credits get free access
+2. **Users without credits** receive a `402 Payment Required` response
+3. **Pay with USDC** on Base via the `X-PAYMENT` header
+4. **Tier discounts** apply to per-request payments
 
 ## Development
 

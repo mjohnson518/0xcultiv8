@@ -1,22 +1,22 @@
 /**
  * Production Server Entry Point
- * Starts the Hono server
+ *
+ * The react-router-hono-server package automatically starts the server
+ * when createHonoServer is called in production mode.
+ * This file just imports the build output to trigger that.
  */
 
-import { serve } from '@hono/node-server';
+console.log('🚀 Starting Cultiv8...');
+console.log(`Environment: NODE_ENV=${process.env.NODE_ENV}`);
+console.log(`Port: ${process.env.PORT || 8080}`);
+console.log(`Database configured: ${!!process.env.DATABASE_URL}`);
 
-// Import the built Hono app
-const { default: app } = await import('./build/server/index.js');
-
-const port = parseInt(process.env.PORT || '8080', 10);
-
-console.log(`🚀 Starting Cultiv8 on port ${port}...`);
-
-// Start the server
-serve({
-  fetch: app.fetch,
-  port,
-}, (info) => {
-  console.log(`✅ Cultiv8 live at http://localhost:${info.port}`);
-});
+try {
+  // Importing this module triggers createHonoServer which starts the server
+  await import('./build/server/index.js');
+  console.log('✅ Server module loaded successfully');
+} catch (error) {
+  console.error('❌ Failed to start server:', error);
+  process.exit(1);
+}
 

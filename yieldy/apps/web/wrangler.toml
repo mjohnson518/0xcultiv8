@@ -4,7 +4,7 @@
 name = "0xcultiv8"
 compatibility_date = "2024-12-01"
 
-# Enable Node.js compatibility for packages like ethers, pg, etc.
+# Enable Node.js compatibility for packages like ethers, etc.
 compatibility_flags = ["nodejs_compat"]
 
 # Pages-specific configuration
@@ -20,6 +20,7 @@ local_protocol = "http"
 [vars]
 NODE_ENV = "production"
 NEXT_PUBLIC_DEMO_MODE = "true"
+CLOUDFLARE_PAGES = "true"
 
 # Production environment overrides
 [env.production]
@@ -28,6 +29,7 @@ name = "0xcultiv8"
 [env.production.vars]
 NODE_ENV = "production"
 NEXT_PUBLIC_DEMO_MODE = "false"
+CLOUDFLARE_PAGES = "true"
 
 # Preview/staging environment
 [env.preview]
@@ -36,3 +38,4 @@ name = "0xcultiv8-preview"
 [env.preview.vars]
 NODE_ENV = "development"
 NEXT_PUBLIC_DEMO_MODE = "true"
+CLOUDFLARE_PAGES = "true"

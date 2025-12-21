@@ -6,6 +6,7 @@
 	"scripts": {
 		"dev": "react-router dev",
 		"build": "react-router build",
+		"build:pages": "CLOUDFLARE_PAGES=true NODE_OPTIONS='--max-old-space-size=4096' react-router build",
 		"start": "NODE_ENV=production node ./build/server/index.js",
 		"start:custom": "node server-start.js",
 		"typecheck": "react-router typegen && tsc --noEmit",

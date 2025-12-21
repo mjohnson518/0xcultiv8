@@ -1,0 +1,201 @@
+version: '3.8'
+
+# ============================================================================
+# 0xCultiv8 Staging Environment
+# Docker Compose configuration for staging deployment
+# ============================================================================
+
+services:
+  # ==========================================================================
+  # Web Application
+  # ==========================================================================
+  web:
+    build:
+      context: ../../yieldy/apps/web
+      dockerfile: Dockerfile
+      args:
+        - NODE_ENV=staging
+    image: cultiv8-web:staging
+    container_name: cultiv8-web-staging
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=staging
+      - PORT=3000
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=redis://redis:6379
+      - ETHEREUM_RPC_URL=${ETHEREUM_RPC_URL}
+      - BASE_RPC_URL=${BASE_RPC_URL}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - KEY_MANAGER_BACKEND=env
+      - AGENT_PRIVATE_KEY=${AGENT_PRIVATE_KEY}
+      - MEV_PROTECTION_ENABLED=true
+      - MEV_PROVIDER=flashbots
+      - SESSION_SECRET=${SESSION_SECRET}
+      # Alerting
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL}
+      - PAGERDUTY_INTEGRATION_KEY=${PAGERDUTY_INTEGRATION_KEY}
+      # Monitoring
+      - SENTRY_DSN=${SENTRY_DSN}
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - cultiv8-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.web.rule=Host(`staging.cultiv8.xyz`)"
+      - "traefik.http.routers.web.tls=true"
+      - "traefik.http.routers.web.tls.certresolver=letsencrypt"
+
+  # ==========================================================================
+  # Redis Cache
+  # ==========================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: cultiv8-redis-staging
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - cultiv8-network
+
+  # ==========================================================================
+  # PostgreSQL Database (for local/staging testing)
+  # Production should use Neon or managed PostgreSQL
+  # ==========================================================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: cultiv8-postgres-staging
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-cultiv8}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB:-cultiv8_staging}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ../../yieldy/apps/web/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cultiv8}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - cultiv8-network
+
+  # ==========================================================================
+  # Traefik Reverse Proxy (optional)
+  # ==========================================================================
+  traefik:
+    image: traefik:v2.10
+    container_name: cultiv8-traefik-staging
+    restart: unless-stopped
+    command:
+      - "--api.dashboard=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8080:8080"  # Dashboard
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik_certs:/letsencrypt
+    networks:
+      - cultiv8-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.dashboard.rule=Host(`traefik.staging.cultiv8.xyz`)"
+      - "traefik.http.routers.dashboard.service=api@internal"
+      - "traefik.http.routers.dashboard.middlewares=auth"
+      - "traefik.http.middlewares.auth.basicauth.users=${TRAEFIK_USERS}"
+
+  # ==========================================================================
+  # Prometheus (Metrics Collection)
+  # ==========================================================================
+  prometheus:
+    image: prom/prometheus:v2.47.0
+    container_name: cultiv8-prometheus-staging
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+    networks:
+      - cultiv8-network
+
+  # ==========================================================================
+  # Grafana (Dashboards)
+  # ==========================================================================
+  grafana:
+    image: grafana/grafana:10.1.0
+    container_name: cultiv8-grafana-staging
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - prometheus
+    networks:
+      - cultiv8-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.grafana.rule=Host(`grafana.staging.cultiv8.xyz`)"
+
+# ============================================================================
+# Volumes
+# ============================================================================
+volumes:
+  redis_data:
+    driver: local
+  postgres_data:
+    driver: local
+  traefik_certs:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+
+# ============================================================================
+# Networks
+# ============================================================================
+networks:
+  cultiv8-network:
+    driver: bridge

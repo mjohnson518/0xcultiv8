@@ -1,0 +1,54 @@
+# ============================================================================
+# Prometheus Configuration for 0xCultiv8
+# ============================================================================
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    environment: 'staging'
+    service: 'cultiv8'
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+          # - alertmanager:9093
+
+# Rule files
+rule_files:
+  # - "first_rules.yml"
+  # - "second_rules.yml"
+
+# Scrape configurations
+scrape_configs:
+  # Self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Cultiv8 Web Application
+  - job_name: 'cultiv8-web'
+    metrics_path: '/api/metrics'
+    static_configs:
+      - targets: ['web:3000']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'cultiv8-web'
+
+  # Redis metrics (using redis-exporter if available)
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis:6379']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'cultiv8-redis'
+
+  # Node exporter (if running)
+  - job_name: 'node'
+    static_configs:
+      - targets: []
+        # - host.docker.internal:9100

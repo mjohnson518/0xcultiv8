@@ -1,0 +1,216 @@
+name: Deploy to Staging
+
+on:
+  push:
+    branches: [develop]
+  workflow_dispatch:
+    inputs:
+      force_deploy:
+        description: 'Force deployment even if tests fail'
+        required: false
+        default: 'false'
+
+env:
+  NODE_VERSION: '20'
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # =============================================================================
+  # Run Tests First
+  # =============================================================================
+  test:
+    name: Pre-deployment Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci && cd yieldy/apps/web && npm ci
+
+      - name: Run contract tests
+        run: npx hardhat test
+
+      - name: Run web tests
+        run: cd yieldy/apps/web && npm test
+
+  # =============================================================================
+  # Build Docker Image
+  # =============================================================================
+  build:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    needs: test
+    if: success() || github.event.inputs.force_deploy == 'true'
+
+    outputs:
+      image_tag: ${{ steps.meta.outputs.tags }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix=staging-
+            type=raw,value=staging-latest
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./yieldy/apps/web
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            NODE_ENV=staging
+
+  # =============================================================================
+  # Deploy to Staging
+  # =============================================================================
+  deploy:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: build
+    environment: staging
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to staging
+        run: |
+          echo "Deploying to staging environment..."
+          echo "Image: ${{ needs.build.outputs.image_tag }}"
+          # Add your deployment commands here
+          # Examples:
+          # - kubectl apply -f k8s/staging/
+          # - terraform apply -auto-approve
+          # - ssh deploy@staging "docker pull && docker-compose up -d"
+
+      # Placeholder for actual deployment
+      # Uncomment and configure based on your infrastructure
+
+      # - name: Deploy via SSH
+      #   uses: appleboy/ssh-action@v1.0.0
+      #   with:
+      #     host: ${{ secrets.STAGING_HOST }}
+      #     username: ${{ secrets.STAGING_USER }}
+      #     key: ${{ secrets.STAGING_SSH_KEY }}
+      #     script: |
+      #       cd /opt/cultiv8
+      #       docker-compose pull
+      #       docker-compose up -d
+      #       docker system prune -f
+
+  # =============================================================================
+  # Deploy Contracts to Testnet
+  # =============================================================================
+  deploy-contracts:
+    name: Deploy Contracts to Testnet
+    runs-on: ubuntu-latest
+    needs: test
+    environment: staging
+    if: github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Deploy to Sepolia
+        run: npx hardhat run scripts/deploy.js --network sepolia
+        env:
+          DEPLOYER_PRIVATE_KEY: ${{ secrets.DEPLOYER_PRIVATE_KEY }}
+          SEPOLIA_RPC_URL: ${{ secrets.SEPOLIA_RPC_URL }}
+          ETHERSCAN_API_KEY: ${{ secrets.ETHERSCAN_API_KEY }}
+
+      - name: Verify contracts on Etherscan
+        run: |
+          echo "Verifying contracts..."
+          # npx hardhat verify --network sepolia DEPLOYED_ADDRESS
+        continue-on-error: true
+
+  # =============================================================================
+  # Smoke Tests
+  # =============================================================================
+  smoke-test:
+    name: Smoke Tests
+    runs-on: ubuntu-latest
+    needs: deploy
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Wait for deployment
+        run: sleep 30
+
+      - name: Health check
+        run: |
+          echo "Running health checks..."
+          # curl -f https://staging.cultiv8.xyz/api/health || exit 1
+
+      - name: Basic API tests
+        run: |
+          echo "Running basic API tests..."
+          # Add curl commands to test key endpoints
+
+  # =============================================================================
+  # Notify
+  # =============================================================================
+  notify:
+    name: Notify
+    runs-on: ubuntu-latest
+    needs: [deploy, smoke-test]
+    if: always()
+
+    steps:
+      - name: Notify Slack on success
+        if: needs.deploy.result == 'success' && needs.smoke-test.result == 'success'
+        run: |
+          echo "Deployment successful!"
+          # curl -X POST -H 'Content-type: application/json' \
+          #   --data '{"text":"✅ Staging deployment successful!"}' \
+          #   ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      - name: Notify Slack on failure
+        if: needs.deploy.result == 'failure' || needs.smoke-test.result == 'failure'
+        run: |
+          echo "Deployment failed!"
+          # curl -X POST -H 'Content-type: application/json' \
+          #   --data '{"text":"❌ Staging deployment failed!"}' \
+          #   ${{ secrets.SLACK_WEBHOOK_URL }}

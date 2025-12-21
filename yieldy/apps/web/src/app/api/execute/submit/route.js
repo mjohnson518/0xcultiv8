@@ -7,6 +7,9 @@ import { checkEmergencyPause, circuitBreaker } from '@/app/api/utils/circuitBrea
 import { auditLog, AUDIT_ACTIONS, getIPFromRequest, getRequestIDFromRequest } from '@/app/api/utils/auditLogger';
 import { validateRequest } from '@/app/api/middleware/validation';
 import { z } from 'zod';
+import { mevProtection, assessMEVRisk } from '@/app/api/utils/mevProtection';
+import { alertManager, ALERT_TEMPLATES, SEVERITY, ALERT_TYPES } from '@/app/api/utils/alerting';
+import { getAgentSigner, KEY_TYPES } from '@/app/api/utils/keyManager';
 
 // Schema for execute request
 const ExecuteSchema = z.object({
@@ -45,34 +48,66 @@ export async function POST(request) {
 
     const chain = chainId === 1 ? 'ethereum' : 'base';
 
-    // For backend execution, need agent private key (SECURE)
-    if (!process.env.AGENT_PRIVATE_KEY) {
-      return Response.json({
-        success: false,
-        error: 'Agent wallet not configured',
-      }, { status: 500 });
-    }
-
+    // Get RPC provider
     const provider = new ethers.JsonRpcProvider(
       chainId === 1 ? process.env.ETHEREUM_RPC_URL : process.env.BASE_RPC_URL
     );
 
-    // Create agent wallet (backend signer)
-    const agentWallet = new ethers.Wallet(process.env.AGENT_PRIVATE_KEY, provider);
+    // Get agent wallet through secure KeyManager
+    // This uses KMS/Vault in production, env vars only in development
+    let agentWallet;
+    try {
+      agentWallet = await getAgentSigner(provider);
+    } catch (keyError) {
+      console.error('Failed to get agent signer:', keyError.message);
+      return Response.json({
+        success: false,
+        error: 'Agent wallet not configured or unavailable',
+      }, { status: 500 });
+    }
 
     // Get protocol adapter
     const adapter = getProtocolAdapter(protocol, chain);
 
     // Parse amount
     const amountBN = ethers.parseUnits(amount.toString(), 6);
+    const amountUSD = Number(amountBN) / 1e6;
 
-    // Execute transaction
+    // MEV Risk Assessment for large transactions
+    const mevRisk = assessMEVRisk({
+      tokenAmount: amountUSD,
+      txType: action,
+      protocol,
+    });
+
+    // Log MEV risk for monitoring
+    if (mevRisk.shouldUseProtection) {
+      console.log(`[MEV] Risk assessment for ${action}:`, {
+        riskLevel: mevRisk.riskLevel,
+        riskScore: mevRisk.riskScore,
+        recommendations: mevRisk.recommendations.map(r => r.action),
+      });
+    }
+
+    // Alert on large fund movements
+    if (amountUSD >= 10000) {
+      await alertManager.send(ALERT_TEMPLATES.largeFundMovement(
+        amountUSD,
+        action === 'deposit' ? 'in' : 'out',
+        { protocol, chain, userAddress, mevRiskLevel: mevRisk.riskLevel }
+      ));
+    }
+
+    // Execute transaction (MEV protection applied in adapter if chainId === 1)
     let result;
     if (action === 'deposit') {
-      result = await adapter.executeDeposit(agentWallet, amountBN);
+      result = await adapter.executeDeposit(agentWallet, amountBN, { mevRisk });
     } else {
-      result = await adapter.executeWithdraw(agentWallet, amountBN);
+      result = await adapter.executeWithdraw(agentWallet, amountBN, { mevRisk });
     }
+
+    // Add MEV assessment to result
+    result.mevRisk = mevRisk;
 
     // Record in database
     if (action === 'deposit') {

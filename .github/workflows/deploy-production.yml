@@ -1,0 +1,361 @@
+name: Deploy to Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_tag:
+        description: 'Version tag to deploy (e.g., v1.0.0)'
+        required: true
+      dry_run:
+        description: 'Dry run (build but do not deploy)'
+        required: false
+        default: 'false'
+      skip_tests:
+        description: 'Skip tests (emergency deploy only)'
+        required: false
+        default: 'false'
+
+env:
+  NODE_VERSION: '20'
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # =============================================================================
+  # Pre-flight Checks
+  # =============================================================================
+  preflight:
+    name: Pre-flight Checks
+    runs-on: ubuntu-latest
+
+    outputs:
+      proceed: ${{ steps.check.outputs.proceed }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Validate version tag
+        id: check
+        run: |
+          if [[ ! "${{ github.event.inputs.version_tag }}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid version tag format. Must be vX.Y.Z"
+            exit 1
+          fi
+          echo "proceed=true" >> $GITHUB_OUTPUT
+
+      - name: Check branch protection
+        run: |
+          echo "Ensuring deployment is from main branch..."
+          if [ "${{ github.ref }}" != "refs/heads/main" ]; then
+            echo "Warning: Deploying from non-main branch"
+          fi
+
+  # =============================================================================
+  # Run Full Test Suite
+  # =============================================================================
+  test:
+    name: Full Test Suite
+    runs-on: ubuntu-latest
+    needs: preflight
+    if: github.event.inputs.skip_tests != 'true'
+
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+
+      postgres:
+        image: postgres:15-alpine
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: cultiv8_test
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci && cd yieldy/apps/web && npm ci
+
+      - name: Run contract tests
+        run: npx hardhat test
+
+      - name: Run web tests
+        run: cd yieldy/apps/web && npm test
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/cultiv8_test
+          REDIS_URL: redis://localhost:6379
+
+      - name: Run security audit
+        run: npm audit --audit-level=critical
+
+  # =============================================================================
+  # Build Production Image
+  # =============================================================================
+  build:
+    name: Build Production Image
+    runs-on: ubuntu-latest
+    needs: [preflight, test]
+    if: always() && (needs.test.result == 'success' || github.event.inputs.skip_tests == 'true')
+
+    outputs:
+      image_digest: ${{ steps.build.outputs.digest }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=${{ github.event.inputs.version_tag }}
+            type=raw,value=production-latest
+            type=sha,prefix=prod-
+
+      - name: Build and push Docker image
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: ./yieldy/apps/web
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            NODE_ENV=production
+            VERSION=${{ github.event.inputs.version_tag }}
+
+  # =============================================================================
+  # Manual Approval Gate
+  # =============================================================================
+  approval:
+    name: Manual Approval
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event.inputs.dry_run != 'true'
+    environment: production
+
+    steps:
+      - name: Approval confirmed
+        run: |
+          echo "Production deployment approved by: ${{ github.actor }}"
+          echo "Version: ${{ github.event.inputs.version_tag }}"
+          echo "Image digest: ${{ needs.build.outputs.image_digest }}"
+
+  # =============================================================================
+  # Deploy to Production
+  # =============================================================================
+  deploy:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [build, approval]
+    environment: production
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create deployment record
+        run: |
+          echo "Recording deployment..."
+          echo "Version: ${{ github.event.inputs.version_tag }}"
+          echo "Deployed by: ${{ github.actor }}"
+          echo "Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+      - name: Deploy to production
+        run: |
+          echo "Deploying to production environment..."
+          echo "Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.event.inputs.version_tag }}"
+
+          # Add your production deployment commands here
+          # Examples:
+          # - kubectl set image deployment/cultiv8 app=IMAGE:TAG
+          # - terraform apply -var="image_tag=TAG"
+
+      # Placeholder for actual deployment - configure based on infrastructure
+      # - name: Deploy via Kubernetes
+      #   run: |
+      #     kubectl set image deployment/cultiv8-web \
+      #       web=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.event.inputs.version_tag }}
+      #     kubectl rollout status deployment/cultiv8-web --timeout=5m
+
+  # =============================================================================
+  # Deploy Mainnet Contracts (if needed)
+  # =============================================================================
+  deploy-contracts:
+    name: Deploy Contracts to Mainnet
+    runs-on: ubuntu-latest
+    needs: approval
+    environment: production-contracts
+    if: false # Manually enable when ready for mainnet
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Deploy to Ethereum Mainnet
+        run: |
+          echo "⚠️ MAINNET DEPLOYMENT"
+          echo "This would deploy contracts to Ethereum mainnet"
+          # npx hardhat run scripts/deploy.js --network mainnet
+        env:
+          DEPLOYER_PRIVATE_KEY: ${{ secrets.MAINNET_DEPLOYER_KEY }}
+          ETHEREUM_RPC_URL: ${{ secrets.ETHEREUM_RPC_URL }}
+          ETHERSCAN_API_KEY: ${{ secrets.ETHERSCAN_API_KEY }}
+
+  # =============================================================================
+  # Post-deployment Verification
+  # =============================================================================
+  verify:
+    name: Post-deployment Verification
+    runs-on: ubuntu-latest
+    needs: deploy
+
+    steps:
+      - name: Wait for deployment rollout
+        run: sleep 60
+
+      - name: Health check
+        run: |
+          echo "Running production health checks..."
+          # for i in {1..5}; do
+          #   if curl -sf https://cultiv8.xyz/api/health; then
+          #     echo "Health check passed!"
+          #     exit 0
+          #   fi
+          #   echo "Attempt $i failed, retrying..."
+          #   sleep 10
+          # done
+          # exit 1
+
+      - name: Smoke tests
+        run: |
+          echo "Running production smoke tests..."
+          # Add essential API tests
+
+      - name: Verify contract connectivity
+        run: |
+          echo "Verifying blockchain connectivity..."
+          # Add contract interaction tests
+
+  # =============================================================================
+  # Create Release
+  # =============================================================================
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: verify
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          echo "Generating changelog..."
+          # Generate changelog from commits since last tag
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          git log --oneline $(git describe --tags --abbrev=0 2>/dev/null || echo "")..HEAD >> $GITHUB_OUTPUT || true
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.event.inputs.version_tag }}
+          name: Release ${{ github.event.inputs.version_tag }}
+          body: |
+            ## 🚀 Production Release ${{ github.event.inputs.version_tag }}
+
+            **Deployed by:** ${{ github.actor }}
+            **Timestamp:** ${{ github.event.head_commit.timestamp }}
+
+            ### Changes
+            ${{ steps.changelog.outputs.changelog }}
+
+            ### Deployment Details
+            - Image: `${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.event.inputs.version_tag }}`
+            - Commit: ${{ github.sha }}
+
+          draft: false
+          prerelease: false
+
+  # =============================================================================
+  # Rollback (if verification fails)
+  # =============================================================================
+  rollback:
+    name: Rollback
+    runs-on: ubuntu-latest
+    needs: verify
+    if: failure()
+    environment: production
+
+    steps:
+      - name: Initiate rollback
+        run: |
+          echo "❌ Verification failed! Initiating rollback..."
+          # kubectl rollout undo deployment/cultiv8-web
+
+      - name: Notify team
+        run: |
+          echo "Sending rollback notification..."
+          # curl -X POST -H 'Content-type: application/json' \
+          #   --data '{"text":"🔄 Production rollback initiated for ${{ github.event.inputs.version_tag }}"}' \
+          #   ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  # =============================================================================
+  # Notify
+  # =============================================================================
+  notify:
+    name: Notify
+    runs-on: ubuntu-latest
+    needs: [deploy, verify, release]
+    if: always()
+
+    steps:
+      - name: Notify on success
+        if: needs.verify.result == 'success'
+        run: |
+          echo "✅ Production deployment successful!"
+          echo "Version: ${{ github.event.inputs.version_tag }}"
+          # Send to Slack, Discord, etc.
+
+      - name: Notify on failure
+        if: needs.deploy.result == 'failure' || needs.verify.result == 'failure'
+        run: |
+          echo "❌ Production deployment failed!"
+          # Send critical alert

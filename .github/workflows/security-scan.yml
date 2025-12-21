@@ -1,0 +1,284 @@
+name: Security Scan
+
+on:
+  schedule:
+    # Run daily at midnight UTC
+    - cron: '0 0 * * *'
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  # =============================================================================
+  # Dependency Vulnerability Scan
+  # =============================================================================
+  dependency-scan:
+    name: Dependency Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci && cd yieldy/apps/web && npm ci
+
+      - name: Run npm audit (root)
+        run: npm audit --json > npm-audit-root.json || true
+
+      - name: Run npm audit (web)
+        run: cd yieldy/apps/web && npm audit --json > ../../../npm-audit-web.json || true
+
+      - name: Upload audit results
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-audit-results
+          path: npm-audit-*.json
+
+      - name: Check for critical vulnerabilities
+        run: |
+          CRITICAL_ROOT=$(cat npm-audit-root.json | jq '.metadata.vulnerabilities.critical // 0')
+          CRITICAL_WEB=$(cat npm-audit-web.json | jq '.metadata.vulnerabilities.critical // 0')
+
+          if [ "$CRITICAL_ROOT" -gt 0 ] || [ "$CRITICAL_WEB" -gt 0 ]; then
+            echo "❌ Critical vulnerabilities found!"
+            echo "Root: $CRITICAL_ROOT, Web: $CRITICAL_WEB"
+            exit 1
+          fi
+
+          echo "✅ No critical vulnerabilities"
+
+  # =============================================================================
+  # Snyk Scan
+  # =============================================================================
+  snyk:
+    name: Snyk Security Scan
+    runs-on: ubuntu-latest
+    if: ${{ secrets.SNYK_TOKEN != '' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci && cd yieldy/apps/web && npm ci
+
+      - name: Run Snyk to check for vulnerabilities
+        uses: snyk/actions/node@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --severity-threshold=high --all-projects
+
+      - name: Upload Snyk results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: snyk.sarif
+        continue-on-error: true
+
+  # =============================================================================
+  # Smart Contract Security
+  # =============================================================================
+  slither:
+    name: Slither Static Analysis
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Slither
+        run: pip3 install slither-analyzer
+
+      - name: Compile contracts
+        run: npx hardhat compile
+
+      - name: Run Slither
+        run: |
+          slither . --exclude-dependencies --json slither-report.json || true
+
+          # Check for high severity issues
+          if [ -f slither-report.json ]; then
+            HIGH_COUNT=$(cat slither-report.json | jq '[.results.detectors[] | select(.impact == "High")] | length')
+            echo "High severity issues: $HIGH_COUNT"
+
+            if [ "$HIGH_COUNT" -gt 0 ]; then
+              echo "⚠️ High severity issues found in smart contracts"
+              cat slither-report.json | jq '.results.detectors[] | select(.impact == "High")'
+            fi
+          fi
+
+      - name: Upload Slither report
+        uses: actions/upload-artifact@v4
+        with:
+          name: slither-report
+          path: slither-report.json
+        if: always()
+
+  # =============================================================================
+  # Mythril Deep Analysis
+  # =============================================================================
+  mythril:
+    name: Mythril Analysis
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Mythril
+        run: pip3 install mythril
+
+      - name: Run Mythril on Cultiv8Agent
+        run: |
+          myth analyze contracts/Cultiv8Agent.sol --solv 0.8.20 --execution-timeout 300 || true
+        continue-on-error: true
+
+      - name: Run Mythril on AgentVault
+        run: |
+          myth analyze contracts/AgentVault.sol --solv 0.8.20 --execution-timeout 300 || true
+        continue-on-error: true
+
+  # =============================================================================
+  # Secret Detection
+  # =============================================================================
+  secrets-scan:
+    name: Secret Detection
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: TruffleHog Secret Scan
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
+          extra_args: --only-verified
+
+      - name: Gitleaks Scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
+
+  # =============================================================================
+  # CodeQL Analysis
+  # =============================================================================
+  codeql:
+    name: CodeQL Analysis
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+
+  # =============================================================================
+  # License Compliance
+  # =============================================================================
+  license-check:
+    name: License Compliance
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install license-checker
+        run: npm install -g license-checker
+
+      - name: Check licenses (root)
+        run: |
+          npm ci
+          license-checker --onlyAllow 'MIT;Apache-2.0;BSD-2-Clause;BSD-3-Clause;ISC;CC0-1.0;Unlicense;0BSD' --summary || true
+
+      - name: Check licenses (web)
+        run: |
+          cd yieldy/apps/web
+          npm ci
+          license-checker --onlyAllow 'MIT;Apache-2.0;BSD-2-Clause;BSD-3-Clause;ISC;CC0-1.0;Unlicense;0BSD' --summary || true
+
+  # =============================================================================
+  # Security Report
+  # =============================================================================
+  report:
+    name: Security Report
+    runs-on: ubuntu-latest
+    needs: [dependency-scan, slither, secrets-scan, codeql, license-check]
+    if: always()
+
+    steps:
+      - name: Generate summary
+        run: |
+          echo "# Security Scan Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Dependency Scan | ${{ needs.dependency-scan.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Slither | ${{ needs.slither.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Secrets Scan | ${{ needs.secrets-scan.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| CodeQL | ${{ needs.codeql.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| License Check | ${{ needs.license-check.result }} |" >> $GITHUB_STEP_SUMMARY
+
+      - name: Fail if critical issues
+        if: needs.dependency-scan.result == 'failure' || needs.secrets-scan.result == 'failure'
+        run: exit 1

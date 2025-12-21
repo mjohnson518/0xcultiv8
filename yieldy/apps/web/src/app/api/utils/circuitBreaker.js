@@ -1,6 +1,7 @@
 import sql from './sql';
 import { auditLog, AUDIT_ACTIONS } from './auditLogger';
 import { log, logSecurityEvent } from './logger';
+import { alertManager, SEVERITY, ALERT_TYPES, ALERT_TEMPLATES } from './alerting.js';
 
 /**
  * Circuit Breaker Pattern Implementation
@@ -159,19 +160,42 @@ export class CircuitBreaker {
   }
 
   /**
-   * Send alert notification
+   * Send alert notification via AlertManager
+   * Supports PagerDuty, Slack, Discord, and Email
    * @param {object} alert - Alert details
    */
   async sendAlert(alert) {
-    // TODO: Implement actual alerting (email, Slack, Discord, etc.)
-    console.log('🚨 ALERT:', alert);
+    const { severity = 'CRITICAL', title, message, context = {} } = alert;
 
-    // For now, just log to console
-    // In production, integrate with:
-    // - SendGrid/AWS SES for email
-    // - Slack webhook
-    // - Discord webhook
-    // - PagerDuty for critical alerts
+    try {
+      // Use AlertManager for production-grade alerting
+      const result = await alertManager.send({
+        title: title || 'Circuit Breaker Alert',
+        message: message || 'An alert was triggered by the circuit breaker',
+        severity: severity === 'CRITICAL' ? SEVERITY.CRITICAL :
+                 severity === 'INFO' ? SEVERITY.INFO : SEVERITY.HIGH,
+        type: ALERT_TYPES.CIRCUIT_BREAKER,
+        dedupeKey: `circuit-breaker-${title || 'generic'}`,
+        context: {
+          ...context,
+          threshold: this.threshold,
+          windowMs: this.windowMs,
+        },
+      });
+
+      if (result.success) {
+        log.info('Alert sent successfully', { title, channels: result.results?.filter(r => r.success).map(r => r.channel) });
+      } else {
+        log.warn('Some alert channels failed', { title, results: result.results });
+      }
+
+      return result;
+    } catch (error) {
+      // Fallback to console logging if AlertManager fails
+      console.error('🚨 ALERT (AlertManager failed):', alert);
+      log.error('Failed to send alert via AlertManager', { error: error.message, alert });
+      return { success: false, error: error.message };
+    }
   }
 
   /**

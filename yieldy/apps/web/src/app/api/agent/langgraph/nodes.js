@@ -2,10 +2,14 @@ import { ChatAnthropic } from "@langchain/anthropic";
 import { ChatOpenAI } from "@langchain/openai";
 import { fetchAllProtocolData } from '../../protocols/adapters.js';
 import { log } from '../../utils/logger.js';
+import { invokeLangChainWithRetry, withLLMFallback } from '../../utils/llmRetry.js';
 
 /**
  * LangGraph Agent Nodes
  * Each node represents a step in the agent's decision-making process
+ *
+ * SECURITY: All LLM calls use retry logic with exponential backoff
+ * and fallback to alternative providers for resilience.
  */
 
 /**
@@ -70,7 +74,18 @@ Provide a strategic analysis covering:
 
 Be specific and actionable. Focus on maximizing risk-adjusted returns.`;
 
-    const response = await claude.invoke([{ role: "user", content: prompt }]);
+    // Use retry logic with exponential backoff for reliability
+    const response = await invokeLangChainWithRetry(
+      claude,
+      [{ role: "user", content: prompt }],
+      {
+        operationName: 'Market Analysis',
+        maxRetries: 3,
+        onRetry: (attempt, error, delay) => {
+          log.warn('Market analysis LLM retry', { attempt, error: error.message, delayMs: delay });
+        },
+      }
+    );
 
     const duration = Date.now() - startTime;
 
@@ -94,7 +109,7 @@ Be specific and actionable. Focus on maximizing risk-adjusted returns.`;
       iteration: state.iteration + 1,
     };
   } catch (error) {
-    log.error('analyzeMarket node failed', { error: error.message });
+    log.error('analyzeMarket node failed', { error: error.message, stack: error.stack });
     return {
       ...state,
       errors: [...state.errors, `Market analysis failed: ${error.message}`],
@@ -140,7 +155,18 @@ Risk tolerance: ${state.riskTolerance}/10
 
 Return ONLY valid JSON array, no other text.`;
 
-    const response = await claude.invoke([{ role: "user", content: prompt }]);
+    // Use retry logic with exponential backoff for reliability
+    const response = await invokeLangChainWithRetry(
+      claude,
+      [{ role: "user", content: prompt }],
+      {
+        operationName: 'Strategy Generation',
+        maxRetries: 3,
+        onRetry: (attempt, error, delay) => {
+          log.warn('Strategy generation LLM retry', { attempt, error: error.message, delayMs: delay });
+        },
+      }
+    );
 
     // Parse strategies from Claude's response
     let strategies = [];
@@ -322,7 +348,18 @@ Return a JSON object with:
 
 Return ONLY valid JSON, no other text.`;
 
-    const response = await gpt4.invoke([{ role: "user", content: prompt }]);
+    // Use retry logic with exponential backoff for reliability
+    const response = await invokeLangChainWithRetry(
+      gpt4,
+      [{ role: "user", content: prompt }],
+      {
+        operationName: 'Execution Planning',
+        maxRetries: 3,
+        onRetry: (attempt, error, delay) => {
+          log.warn('Execution planning LLM retry', { attempt, error: error.message, delayMs: delay });
+        },
+      }
+    );
 
     // Parse execution plan
     let planDetails;

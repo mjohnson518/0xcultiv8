@@ -17,9 +17,19 @@ interface IEIP7702Vault {
 
     function withdraw(uint256 amount) external;
 
-    function executeDelegated(address target, bytes calldata data)
-        external
-        returns (bytes memory);
+    /**
+     * @notice Execute delegated call with per-user authorization
+     * @param user User whose funds/authorization are being used
+     * @param target Target protocol contract
+     * @param amount Amount being transacted (for limit tracking)
+     * @param data Calldata to execute
+     */
+    function executeDelegated(
+        address user,
+        address target,
+        uint256 amount,
+        bytes calldata data
+    ) external returns (bytes memory);
 
     function balanceOf(address user) external view returns (uint256);
 }

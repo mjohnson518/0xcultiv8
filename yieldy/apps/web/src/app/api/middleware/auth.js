@@ -1,36 +1,94 @@
 import { getToken } from '@auth/core/jwt';
+import crypto from 'crypto';
 import { log as logger } from '../utils/logger.js';
+
+// Track if AUTH_SECRET has been validated
+let authSecretValidated = false;
+
+/**
+ * Validate AUTH_SECRET on first use
+ * Ensures the secret is strong enough for production
+ */
+function validateAuthSecret() {
+  if (authSecretValidated) return true;
+
+  const authSecret = process.env.AUTH_SECRET;
+  const isProduction = process.env.NODE_ENV === 'production';
+
+  if (!authSecret) {
+    const msg = 'AUTH_SECRET environment variable is not set';
+    if (isProduction) {
+      logger.error(msg);
+      throw new Error(msg);
+    }
+    logger.warn(msg);
+    return false;
+  }
+
+  // In production, enforce minimum secret length (32 bytes = 256 bits)
+  if (isProduction && authSecret.length < 32) {
+    const msg = 'AUTH_SECRET must be at least 32 characters in production for security';
+    logger.error(msg);
+    throw new Error(msg);
+  }
+
+  // Warn about weak secrets in development
+  if (!isProduction && authSecret.length < 32) {
+    logger.warn('AUTH_SECRET is less than 32 characters - use a stronger secret in production');
+  }
+
+  authSecretValidated = true;
+  return true;
+}
 
 /**
  * Check if we're in a safe development environment
  * Multiple conditions must be true for demo mode to be allowed
+ * SECURITY: Demo mode is completely blocked in production with no exceptions
  */
 function isDemoModeAllowed() {
+  // CRITICAL: Production check FIRST - no exceptions, no bypasses
+  if (process.env.NODE_ENV === 'production') {
+    // Force disable demo mode variables in production to prevent accidents
+    if (process.env.BYPASS_AUTH === 'true' || process.env.NEXT_PUBLIC_DEMO_MODE === 'true') {
+      logger.error('SECURITY VIOLATION: Demo mode environment variables detected in production - BLOCKING');
+    }
+    return false;
+  }
+
   // Must explicitly enable demo mode
   if (process.env.BYPASS_AUTH !== 'true' && process.env.NEXT_PUBLIC_DEMO_MODE !== 'true') {
     return false;
   }
 
-  // NEVER allow in production
-  if (process.env.NODE_ENV === 'production') {
-    logger.warn('Demo mode attempted in production - BLOCKED');
-    return false;
-  }
+  // Additional safety checks for development environments that mimic production
 
   // NEVER allow if real RPC URLs are configured (indicates production-like env)
   if (process.env.ETHEREUM_RPC_URL?.includes('mainnet') ||
-      process.env.BASE_RPC_URL?.includes('mainnet')) {
-    logger.warn('Demo mode blocked - mainnet RPC detected');
+      process.env.BASE_RPC_URL?.includes('mainnet') ||
+      process.env.ETHEREUM_RPC_URL?.includes('alchemy.com/v2') ||
+      process.env.ETHEREUM_RPC_URL?.includes('infura.io/v3')) {
+    logger.warn('Demo mode blocked - production RPC detected');
     return false;
   }
 
   // NEVER allow if real database is configured
   if (process.env.DATABASE_URL?.includes('neon.tech') &&
-      !process.env.DATABASE_URL?.includes('staging')) {
+      !process.env.DATABASE_URL?.includes('staging') &&
+      !process.env.DATABASE_URL?.includes('dev')) {
     logger.warn('Demo mode blocked - production database detected');
     return false;
   }
 
+  // NEVER allow if production domain is set
+  if (process.env.AUTH_URL?.includes('0xcultiv8') ||
+      process.env.AUTH_URL?.includes('cultiv8.finance') ||
+      process.env.NEXT_PUBLIC_APP_URL?.includes('0xcultiv8')) {
+    logger.warn('Demo mode blocked - production domain detected');
+    return false;
+  }
+
+  logger.debug('Demo mode allowed in development environment');
   return true;
 }
 
@@ -41,6 +99,23 @@ function isDemoModeAllowed() {
  * @returns {Response|null} - Error response if unauthorized, null if authorized
  */
 export async function authMiddleware(request) {
+  // Validate AUTH_SECRET on first use (throws in production if invalid)
+  try {
+    validateAuthSecret();
+  } catch (error) {
+    logger.error('Auth secret validation failed', { error: error.message });
+    return new Response(
+      JSON.stringify({
+        error: 'Configuration error',
+        message: 'Authentication is not properly configured',
+      }),
+      {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      }
+    );
+  }
+
   // Demo mode bypass - ONLY in development with strict checks
   if (isDemoModeAllowed()) {
     logger.debug('Demo mode active - auth bypassed (development only)');
@@ -57,7 +132,7 @@ export async function authMiddleware(request) {
     const token = await getToken({
       req: request,
       secret: process.env.AUTH_SECRET,
-      secureCookie: process.env.AUTH_URL?.startsWith('https') || false,
+      secureCookie: process.env.AUTH_URL?.startsWith('https') || process.env.NODE_ENV === 'production',
     });
 
     if (!token) {

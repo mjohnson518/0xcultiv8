@@ -6,6 +6,7 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "./interfaces/IEIP7702Vault.sol";
+import "./interfaces/IEIP8004Agent.sol";
 
 /**
  * @title AgentVault
@@ -23,9 +24,9 @@ contract AgentVault is IEIP7702Vault, Ownable, ReentrancyGuard {
     
     /// @notice USDC token address
     IERC20 public immutable usdc;
-    
-    /// @notice Authorized Cultiv8 agent address
-    address public immutable cultiv8Agent;
+
+    /// @notice Authorized Cultiv8 agent contract (EIP-8004)
+    IEIP8004Agent public immutable cultiv8Agent;
     
     /// @notice User balances
     mapping(address => uint256) public balances;
@@ -48,7 +49,7 @@ contract AgentVault is IEIP7702Vault, Ownable, ReentrancyGuard {
         require(_usdc != address(0), "Invalid USDC address");
         require(_cultiv8Agent != address(0), "Invalid agent address");
         usdc = IERC20(_usdc);
-        cultiv8Agent = _cultiv8Agent;
+        cultiv8Agent = IEIP8004Agent(_cultiv8Agent);
     }
     
     /**
@@ -81,22 +82,38 @@ contract AgentVault is IEIP7702Vault, Ownable, ReentrancyGuard {
     /**
      * @notice Execute delegated call (EIP-7702 support)
      * @dev Allows authorized agent to execute strategies on behalf of users
+     * SECURITY: Verifies per-user authorization via Cultiv8Agent contract
+     * @param user User whose funds/authorization are being used
      * @param target Target contract to call
+     * @param amount Amount being transacted (for limit tracking)
      * @param data Calldata to execute
      * @return result Return data from call
      */
     function executeDelegated(
+        address user,
         address target,
+        uint256 amount,
         bytes calldata data
     ) external nonReentrant whenNotPaused returns (bytes memory result) {
-        require(msg.sender == cultiv8Agent, "Only agent can delegate");
         require(target != address(0), "Invalid target");
         require(whitelistedProtocols[target], "Protocol not whitelisted");
+        require(user != address(0), "Invalid user address");
+
+        // SECURITY: Verify the caller is authorized by this user via EIP-8004
+        IEIP8004Agent.AgentAuthorization memory auth = cultiv8Agent.getAuthorization(user);
+        require(auth.active, "User has not authorized agent");
+        require(auth.agent == msg.sender, "Caller not authorized for this user");
+
+        // SECURITY: Verify amount is within user's limits
+        require(cultiv8Agent.canExecute(user, amount), "Amount exceeds user limits");
+
+        // SECURITY: Verify user has sufficient balance in this vault
+        require(balances[user] >= amount, "Insufficient user balance");
 
         (bool success, bytes memory returnData) = target.call(data);
         require(success, "Delegated call failed");
 
-        emit Delegated(msg.sender, target, data);
+        emit Delegated(user, target, data);
         return returnData;
     }
 

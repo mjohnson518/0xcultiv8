@@ -1,7 +1,7 @@
 import { ethers, Contract } from 'ethers';
 import sql from '@/app/api/utils/sql';
 import { rateLimitMiddleware } from '@/app/api/middleware/rateLimit';
-import { authMiddleware } from '@/app/api/middleware/auth';
+import { authMiddleware, optionalAuth } from '@/app/api/middleware/auth';
 import { auditLog, AUDIT_ACTIONS, getIPFromRequest, getRequestIDFromRequest } from '@/app/api/utils/auditLogger';
 import { log as logger } from '@/app/api/utils/logger';
 import { CULTIV8_AGENT_ABI } from '@/contracts/abis';
@@ -10,15 +10,40 @@ import { getContractAddresses, areContractsDeployed } from '@/contracts/addresse
 /**
  * GET /api/authorization
  * Get user's on-chain authorization status
+ * SECURITY: Requires authentication to prevent data exposure
+ * Users can only query their own authorization status
  */
 export async function GET(request) {
+  // Rate limiting first
   const rateLimitError = await rateLimitMiddleware(request, 'general');
   if (rateLimitError) return rateLimitError;
 
+  // Authentication required - users can only see their own data
+  const authError = await authMiddleware(request);
+  if (authError) return authError;
+
   try {
     const url = new URL(request.url);
-    const userAddress = url.searchParams.get('address');
+    let userAddress = url.searchParams.get('address');
     const chainId = parseInt(url.searchParams.get('chainId') || '1');
+
+    // SECURITY: Users can only query their own authorization
+    // If address is provided, verify it matches authenticated user
+    if (userAddress) {
+      if (userAddress.toLowerCase() !== request.user?.address?.toLowerCase()) {
+        logger.warn('Authorization query for different address blocked', {
+          requested: userAddress,
+          authenticated: request.user?.address,
+        });
+        return Response.json(
+          { success: false, error: 'You can only query your own authorization status' },
+          { status: 403 }
+        );
+      }
+    } else {
+      // Use authenticated user's address if not specified
+      userAddress = request.user?.address;
+    }
 
     if (!userAddress || !ethers.isAddress(userAddress)) {
       return Response.json(

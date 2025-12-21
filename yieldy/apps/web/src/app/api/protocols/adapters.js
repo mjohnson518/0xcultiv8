@@ -12,28 +12,184 @@ import { EthenaAdapter } from './EthenaAdapter.js';
 // Cache providers to avoid creating multiple instances
 const providers = new Map();
 
+// Track provider health for fallback
+const providerHealth = new Map();
+
 /**
- * Get or create RPC provider for a chain
+ * RPC Configuration with fallbacks
+ */
+const RPC_CONFIG = {
+  ethereum: {
+    primary: () => process.env.ETHEREUM_RPC_URL,
+    fallback: () => process.env.ETHEREUM_RPC_URL_BACKUP || process.env.ETHEREUM_RPC_FALLBACK,
+    publicFallback: 'https://eth.llamarpc.com', // Last resort public RPC
+  },
+  base: {
+    primary: () => process.env.BASE_RPC_URL,
+    fallback: () => process.env.BASE_RPC_URL_BACKUP || process.env.BASE_RPC_FALLBACK,
+    publicFallback: 'https://mainnet.base.org', // Last resort public RPC
+  },
+};
+
+/**
+ * Retry configuration
+ */
+const RETRY_CONFIG = {
+  maxRetries: 3,
+  initialDelayMs: 1000,
+  maxDelayMs: 10000,
+  backoffMultiplier: 2,
+};
+
+/**
+ * Sleep helper for retry delays
+ */
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Execute with retry and exponential backoff
+ * @param {Function} fn - Async function to execute
+ * @param {object} options - Retry options
+ * @returns {Promise<any>} - Result of function
+ */
+async function withRetry(fn, options = {}) {
+  const {
+    maxRetries = RETRY_CONFIG.maxRetries,
+    initialDelayMs = RETRY_CONFIG.initialDelayMs,
+    maxDelayMs = RETRY_CONFIG.maxDelayMs,
+    backoffMultiplier = RETRY_CONFIG.backoffMultiplier,
+    onRetry = null,
+  } = options;
+
+  let lastError;
+  let delay = initialDelayMs;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+
+      // Don't retry on non-retryable errors
+      if (error.code === 'INVALID_ARGUMENT' || error.code === 'UNSUPPORTED_OPERATION') {
+        throw error;
+      }
+
+      if (attempt < maxRetries) {
+        if (onRetry) {
+          onRetry(attempt + 1, error);
+        }
+        await sleep(delay);
+        delay = Math.min(delay * backoffMultiplier, maxDelayMs);
+      }
+    }
+  }
+
+  throw lastError;
+}
+
+/**
+ * Get or create RPC provider for a chain with fallback support
  * @param {string} chain - 'ethereum' or 'base'
+ * @param {boolean} forceNew - Force creating a new provider (for fallback)
  * @returns {JsonRpcProvider}
  */
-function getProvider(chain) {
-  if (providers.has(chain)) {
-    return providers.get(chain);
+function getProvider(chain, forceNew = false) {
+  const cacheKey = chain;
+
+  if (!forceNew && providers.has(cacheKey)) {
+    const cached = providers.get(cacheKey);
+    // Check if provider is healthy
+    const health = providerHealth.get(cacheKey);
+    if (!health || health.healthy) {
+      return cached;
+    }
   }
 
-  const rpcUrl = chain === 'ethereum' 
-    ? process.env.ETHEREUM_RPC_URL 
-    : process.env.BASE_RPC_URL;
+  const config = RPC_CONFIG[chain];
+  if (!config) {
+    throw new Error(`Unknown chain: ${chain}`);
+  }
+
+  // Try primary RPC
+  let rpcUrl = config.primary();
+
+  // If primary is not available or unhealthy, try fallback
+  const health = providerHealth.get(cacheKey);
+  if (!rpcUrl || (health && !health.healthy)) {
+    rpcUrl = config.fallback();
+    if (rpcUrl) {
+      console.log(`[RPC] Using fallback RPC for ${chain}`);
+    }
+  }
+
+  // Last resort: public fallback
+  if (!rpcUrl) {
+    rpcUrl = config.publicFallback;
+    console.warn(`[RPC] Using public fallback RPC for ${chain} - not recommended for production`);
+  }
 
   if (!rpcUrl) {
-    throw new Error(`RPC URL not configured for chain: ${chain}`);
+    throw new Error(`No RPC URL available for chain: ${chain}`);
   }
 
-  const provider = new ethers.JsonRpcProvider(rpcUrl);
-  providers.set(chain, provider);
+  const provider = new ethers.JsonRpcProvider(rpcUrl, undefined, {
+    staticNetwork: true, // Avoid extra network calls
+    batchMaxCount: 10,   // Enable batching
+  });
+
+  providers.set(cacheKey, provider);
+  providerHealth.set(cacheKey, { healthy: true, lastCheck: Date.now() });
 
   return provider;
+}
+
+/**
+ * Mark a provider as unhealthy and get fallback
+ * @param {string} chain - Chain name
+ * @returns {JsonRpcProvider} - Fallback provider
+ */
+function switchToFallback(chain) {
+  providerHealth.set(chain, { healthy: false, lastCheck: Date.now() });
+  providers.delete(chain); // Force new provider creation
+  return getProvider(chain, true);
+}
+
+// Export retry utility for use by other modules (e.g., LLM calls)
+export { withRetry };
+
+/**
+ * Execute a provider operation with automatic fallback
+ * @param {string} chain - Chain name
+ * @param {Function} operation - Operation to execute with provider
+ * @returns {Promise<any>} - Result of operation
+ */
+export async function executeWithFallback(chain, operation) {
+  const maxAttempts = 2; // Primary + fallback
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const provider = getProvider(chain, attempt > 0);
+
+    try {
+      return await withRetry(() => operation(provider), {
+        maxRetries: 2,
+        onRetry: (retryNum, error) => {
+          console.warn(`[RPC] Retry ${retryNum} for ${chain}: ${error.message}`);
+        },
+      });
+    } catch (error) {
+      console.error(`[RPC] Provider failed for ${chain}:`, error.message);
+
+      if (attempt < maxAttempts - 1) {
+        console.log(`[RPC] Switching to fallback provider for ${chain}`);
+        switchToFallback(chain);
+      } else {
+        throw error;
+      }
+    }
+  }
 }
 
 /**

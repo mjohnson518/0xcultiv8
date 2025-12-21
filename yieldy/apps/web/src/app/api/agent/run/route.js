@@ -105,8 +105,30 @@ export async function POST(request) {
 
     log.info('Agent graph execution starting', { threadId });
 
-    // Invoke agent
-    const finalState = await agent.invoke(initialState, agentConfig);
+    // SECURITY: Add timeout to prevent indefinite hangs
+    const AGENT_TIMEOUT_MS = parseInt(process.env.AGENT_EXECUTION_TIMEOUT_MS) || 60000; // 60s default
+
+    // Create abort controller for timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      controller.abort();
+      log.warn('Agent execution timeout triggered', { threadId, timeoutMs: AGENT_TIMEOUT_MS });
+    }, AGENT_TIMEOUT_MS);
+
+    let finalState;
+    try {
+      // Invoke agent with timeout
+      finalState = await Promise.race([
+        agent.invoke(initialState, agentConfig),
+        new Promise((_, reject) => {
+          controller.signal.addEventListener('abort', () => {
+            reject(new Error(`Agent execution timed out after ${AGENT_TIMEOUT_MS}ms`));
+          });
+        }),
+      ]);
+    } finally {
+      clearTimeout(timeoutId);
+    }
 
     log.info('Agent graph execution completed', {
       threadId,

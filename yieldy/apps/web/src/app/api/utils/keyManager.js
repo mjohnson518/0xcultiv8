@@ -44,8 +44,18 @@ export const BACKEND_TYPES = {
  */
 export class KeyManager {
   constructor(config = {}) {
+    const requestedBackend = process.env.KEY_MANAGER_BACKEND || BACKEND_TYPES.ENV;
+
+    // SECURITY: Enforce KMS or Vault in production - ENV backend is NOT allowed
+    if (process.env.NODE_ENV === 'production' && requestedBackend === BACKEND_TYPES.ENV) {
+      const errorMsg = 'CRITICAL SECURITY ERROR: Environment variable backend is not allowed in production. ' +
+        'Set KEY_MANAGER_BACKEND to "aws_kms" or "vault" and configure the appropriate credentials.';
+      log.error(errorMsg);
+      throw new Error(errorMsg);
+    }
+
     this.config = {
-      backend: process.env.KEY_MANAGER_BACKEND || BACKEND_TYPES.ENV,
+      backend: requestedBackend,
       cacheTTL: parseInt(process.env.KEY_CACHE_TTL_MS) || 300000, // 5 min default
       auditEnabled: process.env.KEY_AUDIT_ENABLED !== 'false',
 
@@ -68,6 +78,11 @@ export class KeyManager {
       ...config,
     };
 
+    // Validate production configuration
+    if (process.env.NODE_ENV === 'production') {
+      this.validateProductionConfig();
+    }
+
     // In-memory cache for secrets
     this.cache = new Map();
 
@@ -81,6 +96,27 @@ export class KeyManager {
       backend: this.config.backend,
       auditEnabled: this.config.auditEnabled,
     });
+  }
+
+  /**
+   * Validate production configuration
+   * Ensures all required settings are present
+   */
+  validateProductionConfig() {
+    if (this.config.backend === BACKEND_TYPES.AWS_KMS) {
+      if (!this.config.aws.keyId) {
+        throw new Error('AWS_KMS_KEY_ID is required when using AWS KMS backend');
+      }
+    } else if (this.config.backend === BACKEND_TYPES.VAULT) {
+      if (!this.config.vault.token) {
+        throw new Error('VAULT_TOKEN is required when using Vault backend');
+      }
+      if (!this.config.vault.endpoint || this.config.vault.endpoint.includes('localhost')) {
+        throw new Error('VAULT_ADDR must be a production Vault endpoint');
+      }
+    }
+
+    log.info('Production key manager configuration validated', { backend: this.config.backend });
   }
 
   /**

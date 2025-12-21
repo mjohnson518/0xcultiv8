@@ -90,8 +90,8 @@ export async function POST(request) {
 
     if (feeType === 'management') {
       // Management fee collection
-      
-      // Check if already collected for this period
+
+      // Check if already collected for this period (outside transaction for efficiency)
       const existing = await sql`
         SELECT id FROM management_fees
         WHERE user_address = ${userAddress}
@@ -111,65 +111,68 @@ export async function POST(request) {
 
       const feeAmount = calculateMonthlyManagementFee(aum, tier);
 
-      // Insert management fee record
-      const mgmtFee = await sql`
-        INSERT INTO management_fees (
-          user_address,
-          collection_period,
-          aum_snapshot,
-          management_fee_percent,
-          fee_amount,
-          user_tier,
-          status,
-          collected_at
-        ) VALUES (
-          ${userAddress},
-          ${period},
-          ${aum},
-          ${userConfig.management_fee_percent},
-          ${feeAmount},
-          ${tier},
-          'collected',
-          NOW()
-        )
-        RETURNING *
-      `;
+      // ATOMIC: Wrap fee collection in a transaction
+      await sql.begin(async (tx) => {
+        // Insert management fee record
+        const mgmtFee = await tx`
+          INSERT INTO management_fees (
+            user_address,
+            collection_period,
+            aum_snapshot,
+            management_fee_percent,
+            fee_amount,
+            user_tier,
+            status,
+            collected_at
+          ) VALUES (
+            ${userAddress},
+            ${period},
+            ${aum},
+            ${userConfig.management_fee_percent},
+            ${feeAmount},
+            ${tier},
+            'collected',
+            NOW()
+          )
+          RETURNING *
+        `;
 
-      feeRecord = mgmtFee[0];
+        feeRecord = mgmtFee[0];
 
-      // Add to history
-      await sql`
-        INSERT INTO fee_collection_history (
-          user_address,
-          fee_type,
-          fee_amount,
-          base_amount,
-          fee_percent,
-          user_tier,
-          status,
-          reference_id
-        ) VALUES (
-          ${userAddress},
-          'management',
-          ${feeAmount},
-          ${aum},
-          ${userConfig.management_fee_percent},
-          ${tier},
-          'collected',
-          ${feeRecord.id}
-        )
-      `;
+        // Add to history
+        await tx`
+          INSERT INTO fee_collection_history (
+            user_address,
+            fee_type,
+            fee_amount,
+            base_amount,
+            fee_percent,
+            user_tier,
+            status,
+            reference_id
+          ) VALUES (
+            ${userAddress},
+            'management',
+            ${feeAmount},
+            ${aum},
+            ${userConfig.management_fee_percent},
+            ${tier},
+            'collected',
+            ${feeRecord.id}
+          )
+        `;
 
-      // Update last collection timestamp
-      await sql`
-        UPDATE agent_config
-        SET last_management_fee_collected_at = NOW()
-        WHERE id = (SELECT id FROM agent_config ORDER BY id DESC LIMIT 1)
-      `;
+        // Update last collection timestamp
+        await tx`
+          UPDATE agent_config
+          SET last_management_fee_collected_at = NOW()
+          WHERE id = (SELECT id FROM agent_config ORDER BY id DESC LIMIT 1)
+        `;
+      });
 
     } else if (feeType === 'performance') {
       // Performance fee collection
-      
+
       if (!amount || amount <= 0) {
         return Response.json(
           {
@@ -182,54 +185,57 @@ export async function POST(request) {
 
       const feeAmount = calculatePerformanceFee(amount, tier);
 
-      // Insert performance fee record
-      const perfFee = await sql`
-        INSERT INTO performance_fees (
-          user_address,
-          investment_id,
-          profit_amount,
-          performance_fee_percent,
-          fee_amount,
-          user_tier,
-          status,
-          realized_at
-        ) VALUES (
-          ${userAddress},
-          ${investmentId || null},
-          ${amount},
-          ${userConfig.performance_fee_percent},
-          ${feeAmount},
-          ${tier},
-          'collected',
-          NOW()
-        )
-        RETURNING *
-      `;
+      // ATOMIC: Wrap fee collection in a transaction
+      await sql.begin(async (tx) => {
+        // Insert performance fee record
+        const perfFee = await tx`
+          INSERT INTO performance_fees (
+            user_address,
+            investment_id,
+            profit_amount,
+            performance_fee_percent,
+            fee_amount,
+            user_tier,
+            status,
+            realized_at
+          ) VALUES (
+            ${userAddress},
+            ${investmentId || null},
+            ${amount},
+            ${userConfig.performance_fee_percent},
+            ${feeAmount},
+            ${tier},
+            'collected',
+            NOW()
+          )
+          RETURNING *
+        `;
 
-      feeRecord = perfFee[0];
+        feeRecord = perfFee[0];
 
-      // Add to history
-      await sql`
-        INSERT INTO fee_collection_history (
-          user_address,
-          fee_type,
-          fee_amount,
-          base_amount,
-          fee_percent,
-          user_tier,
-          status,
-          reference_id
-        ) VALUES (
-          ${userAddress},
-          'performance',
-          ${feeAmount},
-          ${amount},
-          ${userConfig.performance_fee_percent},
-          ${tier},
-          'collected',
-          ${feeRecord.id}
-        )
-      `;
+        // Add to history
+        await tx`
+          INSERT INTO fee_collection_history (
+            user_address,
+            fee_type,
+            fee_amount,
+            base_amount,
+            fee_percent,
+            user_tier,
+            status,
+            reference_id
+          ) VALUES (
+            ${userAddress},
+            'performance',
+            ${feeAmount},
+            ${amount},
+            ${userConfig.performance_fee_percent},
+            ${tier},
+            'collected',
+            ${feeRecord.id}
+          )
+        `;
+      });
     }
 
     // Audit log

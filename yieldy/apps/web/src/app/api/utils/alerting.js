@@ -106,6 +106,8 @@ export class AlertManager {
    * @param {string} alert.type - Alert type (ALERT_TYPES enum)
    * @param {object} alert.context - Additional context data
    * @param {string} alert.dedupeKey - Optional key for deduplication
+   * @param {string} alert.userId - Optional user ID for scoped deduplication
+   * @param {string} alert.resourceId - Optional resource ID for scoped deduplication
    * @returns {Promise<object>} - Result of alert dispatch
    */
   async send(alert) {
@@ -116,13 +118,17 @@ export class AlertManager {
       type = ALERT_TYPES.SYSTEM_ERROR,
       context = {},
       dedupeKey = null,
+      userId = null,
+      resourceId = null,
     } = alert;
 
-    // Deduplication check
+    // Deduplication check with scoping
+    // SECURITY: Scope dedupe keys by user/resource to prevent cross-user suppression
     if (dedupeKey) {
-      const dedupeResult = this.checkDedupe(dedupeKey, severity);
+      const scopedDedupeKey = this.buildScopedDedupeKey(dedupeKey, { userId, resourceId, type });
+      const dedupeResult = this.checkDedupe(scopedDedupeKey, severity);
       if (dedupeResult.suppressed) {
-        log.debug('Alert suppressed by deduplication', { dedupeKey, count: dedupeResult.count });
+        log.debug('Alert suppressed by deduplication', { dedupeKey: scopedDedupeKey, count: dedupeResult.count });
         return { success: true, suppressed: true, count: dedupeResult.count };
       }
     }
@@ -149,6 +155,37 @@ export class AlertManager {
       success: results.some(r => r.success),
       results,
     };
+  }
+
+  /**
+   * Build a scoped deduplication key
+   * Includes user/resource context to prevent cross-user alert suppression
+   * @param {string} baseKey - The base dedupe key
+   * @param {object} scope - Scoping context
+   * @param {string} scope.userId - User ID for user-scoped alerts
+   * @param {string} scope.resourceId - Resource ID for resource-scoped alerts
+   * @param {string} scope.type - Alert type for additional scoping
+   * @returns {string} - Scoped dedupe key
+   */
+  buildScopedDedupeKey(baseKey, { userId, resourceId, type }) {
+    const parts = [baseKey];
+
+    // Add type for more granular deduplication
+    if (type) {
+      parts.push(`type:${type}`);
+    }
+
+    // Scope by user if provided (prevents User A's alerts from suppressing User B's)
+    if (userId) {
+      parts.push(`user:${userId}`);
+    }
+
+    // Scope by resource if provided (e.g., transaction hash, investment ID)
+    if (resourceId) {
+      parts.push(`resource:${resourceId}`);
+    }
+
+    return parts.join('::');
   }
 
   /**

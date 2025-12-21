@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RetroSettings } from "@/components/Cultiv8Agent/RetroSettings";
 import { useCultiv8AgentData } from "@/hooks/useCultiv8AgentData";
 import { useWallet } from '../providers/WalletProvider';
+import { isDemoModeEnabled } from '@/utils/demoMode';
 
 const queryClient = new QueryClient();
 
@@ -32,8 +33,8 @@ function SettingsWrapper() {
       return;
     }
 
-    // Demo mode: simulate authorization
-    if (process.env.NEXT_PUBLIC_DEMO_MODE === 'true') {
+    // Demo mode: simulate authorization (only if safely enabled)
+    if (isDemoModeEnabled()) {
       setAuthorizationState({
         ...authorizationState,
         active: true,

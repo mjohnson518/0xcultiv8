@@ -201,15 +201,15 @@ class MEVMonitor {
    */
   async getProtectionStats() {
     try {
-      const protected = await this.redis?.get('mev:stats:protected') || 0;
-      const unprotected = await this.redis?.get('mev:stats:unprotected') || 0;
-      const total = Number(protected) + Number(unprotected);
+      const protectedCount = await this.redis?.get('mev:stats:protected') || 0;
+      const unprotectedCount = await this.redis?.get('mev:stats:unprotected') || 0;
+      const total = Number(protectedCount) + Number(unprotectedCount);
 
       return {
         totalTransactions: total,
-        protectedTransactions: Number(protected),
-        unprotectedTransactions: Number(unprotected),
-        protectionRate: total > 0 ? ((Number(protected) / total) * 100).toFixed(2) : 0,
+        protectedTransactions: Number(protectedCount),
+        unprotectedTransactions: Number(unprotectedCount),
+        protectionRate: total > 0 ? ((Number(protectedCount) / total) * 100).toFixed(2) : 0,
       };
     } catch (error) {
       console.error('Failed to get protection stats:', error);

@@ -1,6 +1,8 @@
 import { ethers } from 'ethers';
 import { AaveV3Adapter } from './AaveV3Adapter.js';
 import { CompoundV3Adapter } from './CompoundV3Adapter.js';
+import { MorphoBlueAdapter } from './MorphoBlueAdapter.js';
+import { EthenaAdapter } from './EthenaAdapter.js';
 
 /**
  * Protocol Adapter Registry
@@ -55,6 +57,18 @@ export function getProtocolAdapter(protocol, chain) {
     case 'compound_v3':
       return new CompoundV3Adapter(provider, chainId);
 
+    case 'morpho':
+    case 'morpho_blue':
+      return new MorphoBlueAdapter(provider, chainId);
+
+    case 'ethena':
+    case 'susde':
+      // Ethena only supports Ethereum mainnet
+      if (chainId !== 1) {
+        throw new Error('Ethena is only supported on Ethereum mainnet');
+      }
+      return new EthenaAdapter(provider, chainId);
+
     default:
       throw new Error(`Unsupported protocol: ${protocol}`);
   }
@@ -67,8 +81,8 @@ export function getProtocolAdapter(protocol, chain) {
  */
 export function getSupportedProtocols(chain) {
   const protocols = {
-    ethereum: ['aave', 'compound'],
-    base: ['aave', 'compound'],
+    ethereum: ['aave', 'compound', 'morpho', 'ethena'],
+    base: ['aave', 'compound', 'morpho'],
   };
 
   return protocols[chain] || [];

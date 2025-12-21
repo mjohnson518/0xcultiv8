@@ -1,0 +1,5 @@
+# Proxy API requests to Railway backend
+/api/*  https://cultiv8-web-production.up.railway.app/api/:splat  200
+
+# Handle client-side routing - serve index.html for all other routes
+/*  /index.html  200

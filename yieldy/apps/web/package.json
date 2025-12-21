@@ -34,6 +34,8 @@
 		"@fontsource/press-start-2p": "^5.2.7",
 		"@fontsource/vt323": "^5.2.7",
 		"@hono/auth-js": "^1.0.15",
+		"@hono/node-server": "^1.13.7",
+		"hono": "^4.6.0",
 		"@langchain/anthropic": "^0.3.30",
 		"@langchain/core": "^0.3.30",
 		"@langchain/langgraph": "^0.4.9",

@@ -1,11 +1,14 @@
 [build]
 builder = "NIXPACKS"
+# Build the full SSR server (not SPA mode)
 buildCommand = "npm install --legacy-peer-deps && npm run build"
 
 [deploy]
-startCommand = "npm start"
+# Use the custom server start script for Hono
+startCommand = "npm run start:custom"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10
 healthcheckPath = "/api/health"
-healthcheckTimeout = 100
+healthcheckTimeout = 300
+numReplicas = 1
 

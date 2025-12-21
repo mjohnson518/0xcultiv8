@@ -108,11 +108,16 @@ class MEVMonitor {
         })
       );
 
+      // Analyze transactions for MEV patterns
+      const validTxs = transactions.filter(Boolean);
+      const mevAnalysis = this.analyzeMEVPatterns(validTxs);
+
       return {
         totalTransactions: txHashes.length,
-        recentTransactions: transactions.filter(Boolean),
-        mevDetected: 0, // TODO: Implement detection logic
-        potentialSavings: 0,
+        recentTransactions: validTxs,
+        mevDetected: mevAnalysis.detectedCount,
+        potentialSavings: mevAnalysis.estimatedSavings,
+        patterns: mevAnalysis.patterns,
       };
     } catch (error) {
       console.error('Failed to get MEV stats:', error);
@@ -138,6 +143,89 @@ class MEVMonitor {
     ];
 
     return protectedProviders.some(provider => rpcUrl?.includes(provider));
+  }
+
+  /**
+   * Analyze transactions for MEV patterns
+   * Detects sandwich attacks, front-running, and other MEV extractions
+   * @param {Array} transactions - Array of transaction objects
+   * @returns {object} Analysis results
+   */
+  analyzeMEVPatterns(transactions) {
+    if (!transactions || transactions.length === 0) {
+      return { detectedCount: 0, estimatedSavings: 0, patterns: [] };
+    }
+
+    const patterns = [];
+    let detectedCount = 0;
+    let estimatedSavings = 0;
+
+    // Sort transactions by timestamp
+    const sorted = [...transactions].sort((a, b) => a.timestamp - b.timestamp);
+
+    for (let i = 0; i < sorted.length; i++) {
+      const tx = sorted[i];
+
+      // Pattern 1: Abnormally high gas price for swap transactions
+      if (tx.type === 'swap' && tx.gasPrice) {
+        const gasPriceGwei = Number(tx.gasPrice) / 1e9;
+        if (gasPriceGwei > 100) { // Unusually high gas price
+          patterns.push({
+            type: 'high_gas_price',
+            txHash: tx.hash,
+            gasPrice: gasPriceGwei,
+            timestamp: tx.timestamp,
+            severity: gasPriceGwei > 500 ? 'high' : 'medium',
+          });
+          detectedCount++;
+          // Estimate savings: difference from average gas price
+          estimatedSavings += (gasPriceGwei - 50) * 21000 / 1e9; // Rough ETH estimate
+        }
+      }
+
+      // Pattern 2: Rapid sequential transactions (potential sandwich)
+      if (i > 0 && i < sorted.length - 1) {
+        const prevTx = sorted[i - 1];
+        const nextTx = sorted[i + 1];
+        const timeDiff1 = tx.timestamp - prevTx.timestamp;
+        const timeDiff2 = nextTx.timestamp - tx.timestamp;
+
+        // Check for sandwich pattern: buy -> victim -> sell in quick succession
+        if (timeDiff1 < 15000 && timeDiff2 < 15000) { // Within 15 seconds each
+          if (prevTx.type === 'swap' && tx.type === 'swap' && nextTx.type === 'swap') {
+            patterns.push({
+              type: 'potential_sandwich',
+              txHashes: [prevTx.hash, tx.hash, nextTx.hash],
+              timestamps: [prevTx.timestamp, tx.timestamp, nextTx.timestamp],
+              severity: 'high',
+            });
+            detectedCount++;
+            // Estimate: 0.5-2% of transaction value
+            estimatedSavings += Number(tx.value) * 0.01 / 1e6;
+          }
+        }
+      }
+
+      // Pattern 3: Large value transaction without MEV protection
+      const valueUSD = Number(tx.value) / 1e6;
+      if (valueUSD > 10000 && !tx.mevProtected) {
+        patterns.push({
+          type: 'unprotected_large_tx',
+          txHash: tx.hash,
+          value: valueUSD,
+          timestamp: tx.timestamp,
+          severity: valueUSD > 100000 ? 'critical' : 'high',
+          recommendation: 'Use Flashbots RPC for large transactions',
+        });
+      }
+    }
+
+    return {
+      detectedCount,
+      estimatedSavings: Math.round(estimatedSavings * 100) / 100,
+      patterns,
+      analyzedCount: transactions.length,
+    };
   }
 
   /**

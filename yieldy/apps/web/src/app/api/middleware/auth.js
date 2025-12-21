@@ -134,22 +134,47 @@ export async function requireAdmin(request) {
 
 /**
  * Check if user has admin privileges
+ * Uses multiple sources: environment variable and database
  * @param {object} user - User object from token
  * @returns {Promise<boolean>} - True if user is admin
  */
 async function checkAdminStatus(user) {
-  // TODO: Implement proper admin role checking
-  // For now, check against environment variable or database
-  
-  // Option 1: Environment variable (simple, for MVP)
-  const adminAddresses = (process.env.ADMIN_ADDRESSES || '').split(',').map(a => a.toLowerCase());
-  if (adminAddresses.includes(user.address?.toLowerCase())) {
+  if (!user?.address) {
+    return false;
+  }
+
+  const userAddress = user.address.toLowerCase();
+
+  // Option 1: Check environment variable (primary, fast)
+  const adminAddresses = (process.env.ADMIN_ADDRESSES || '')
+    .split(',')
+    .map(a => a.trim().toLowerCase())
+    .filter(Boolean);
+
+  if (adminAddresses.includes(userAddress)) {
+    logger.debug('Admin access granted via env config', { address: userAddress });
     return true;
   }
 
-  // Option 2: Check database for admin role
-  // const result = await sql`SELECT is_admin FROM users WHERE address = ${user.address}`;
-  // return result[0]?.is_admin || false;
+  // Option 2: Check database for admin role (secondary, allows dynamic updates)
+  try {
+    // Lazy import to avoid circular dependencies
+    const sql = (await import('../utils/sql.js')).default;
+
+    const result = await sql`
+      SELECT is_admin FROM users
+      WHERE LOWER(address) = ${userAddress}
+      LIMIT 1
+    `;
+
+    if (result[0]?.is_admin === true) {
+      logger.debug('Admin access granted via database', { address: userAddress });
+      return true;
+    }
+  } catch (error) {
+    // Database check failed, fall back to env-only check
+    logger.warn('Admin database check failed', { error: error.message });
+  }
 
   return false;
 }

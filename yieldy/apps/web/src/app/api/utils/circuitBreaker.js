@@ -78,7 +78,7 @@ export class CircuitBreaker {
       // Reset failure counter
       this.failureCount.clear();
 
-      // TODO: Send alert to admin (email, Slack, etc.)
+      // Send critical alert via PagerDuty, Slack, Discord, Email
       await this.sendAlert({
         severity: 'CRITICAL',
         title: 'Circuit Breaker Triggered',

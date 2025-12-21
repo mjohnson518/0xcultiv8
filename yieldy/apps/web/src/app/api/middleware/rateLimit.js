@@ -108,7 +108,11 @@ export async function rateLimitMiddleware(request, type = 'general') {
 
 /**
  * Get unique identifier for rate limiting
- * Combines IP address and user wallet for comprehensive limiting
+ * Uses IP address and authenticated user info for comprehensive limiting
+ *
+ * SECURITY: We do NOT trust wallet addresses from URL parameters as they can be spoofed.
+ * Only use wallet addresses that have been verified through authentication.
+ *
  * @param {Request} request
  * @returns {string} Unique identifier
  */
@@ -116,26 +120,32 @@ function getRequestIdentifier(request) {
   const identifiers = [];
 
   // Get IP address from various headers
+  // Priority: cf-connecting-ip (Cloudflare) > x-real-ip > x-forwarded-for
   const ip =
-    request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
-    request.headers.get('x-real-ip') ||
     request.headers.get('cf-connecting-ip') ||
+    request.headers.get('x-real-ip') ||
+    request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
     'unknown-ip';
 
   identifiers.push(ip);
 
-  // Get user identifier if authenticated
-  // Will be set by auth middleware in later tasks
+  // Get user identifier if authenticated (set by auth middleware)
+  // This is trusted because it comes from verified JWT token
   if (request.user?.id) {
-    identifiers.push(request.user.id);
+    identifiers.push(`user:${request.user.id}`);
   }
 
-  // Get wallet address if provided in request
-  const url = new URL(request.url);
-  const walletParam = url.searchParams.get('wallet') || url.searchParams.get('address');
-  if (walletParam) {
-    identifiers.push(walletParam.toLowerCase());
+  // ONLY use wallet address if it comes from authenticated user context
+  // Do NOT trust wallet/address from URL parameters - this can be spoofed
+  // to rate-limit other users or bypass rate limits
+  if (request.user?.address) {
+    identifiers.push(`wallet:${request.user.address.toLowerCase()}`);
   }
+
+  // Note: We intentionally do NOT use url.searchParams.get('wallet')
+  // because an attacker could:
+  // 1. Add another user's wallet to rate-limit them
+  // 2. Rotate through fake wallets to bypass their own rate limit
 
   // Combine identifiers
   return identifiers.join(':');

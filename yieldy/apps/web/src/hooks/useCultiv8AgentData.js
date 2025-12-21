@@ -153,6 +153,81 @@ export function useCultiv8AgentData() {
     },
   });
 
+  // Fetch agent history
+  const { data: agentHistory = [], isLoading: historyLoading } = useQuery({
+    queryKey: ["agent-history"],
+    queryFn: async () => {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+      try {
+        const response = await fetch("/api/agent/history", {
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+        if (!response.ok) throw new Error("Failed to fetch history");
+        const data = await response.json();
+        return data.history || data.decisions || [];
+      } catch (error) {
+        clearTimeout(timeoutId);
+        return []; // Return empty array on error
+      }
+    },
+    retry: false,
+    staleTime: 1000 * 60 * 2,
+  });
+
+  // Create investment mutation
+  const investMutation = useMutation({
+    mutationFn: async ({ opportunityId, amount }) => {
+      const response = await fetch("/api/investments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          opportunity_id: opportunityId,
+          amount,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || errorData.message || `Investment failed (${response.status})`);
+      }
+
+      return response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["investments"] });
+      queryClient.invalidateQueries({ queryKey: ["agent-config"] }); // May affect AUM
+      return data;
+    },
+    onError: (error) => {
+      console.error('Investment mutation error:', error);
+    },
+  });
+
+  // Upgrade tier mutation
+  const upgradeTierMutation = useMutation({
+    mutationFn: async () => {
+      const response = await fetch("/api/user/tier", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "upgrade" }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || errorData.message || `Tier upgrade failed (${response.status})`);
+      }
+
+      return response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["agent-config"] });
+      return data;
+    },
+  });
+
   const handleRunScan = useCallback(
     (blockchain = "both", forceRun = true) => {
       scanMutation.mutate({ blockchain, forceRun });
@@ -168,6 +243,20 @@ export function useCultiv8AgentData() {
     }
   }, [config, updateConfigMutation]);
 
+  // Helper for investment with validation
+  const handleInvest = useCallback(
+    async (opportunity, amount) => {
+      if (!opportunity?.id) {
+        throw new Error("Invalid opportunity selected");
+      }
+      if (!amount || amount <= 0) {
+        throw new Error("Please enter a valid investment amount");
+      }
+      return investMutation.mutateAsync({ opportunityId: opportunity.id, amount });
+    },
+    [investMutation]
+  );
+
   return {
     config,
     configLoading,
@@ -175,10 +264,15 @@ export function useCultiv8AgentData() {
     opportunitiesLoading,
     investments,
     investmentsLoading,
+    agentHistory,
+    historyLoading,
     scanMutation,
     updateConfigMutation,
     schedulerMutation,
+    investMutation,
+    upgradeTierMutation,
     handleRunScan,
+    handleInvest,
     toggleAutoInvest,
   };
 }

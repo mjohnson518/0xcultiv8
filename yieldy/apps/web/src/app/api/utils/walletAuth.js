@@ -1,4 +1,5 @@
 import { verifyMessage, getAddress, recoverAddress } from 'ethers';
+import crypto from 'crypto';
 import sql from './sql';
 
 /**
@@ -7,12 +8,13 @@ import sql from './sql';
  */
 
 /**
- * Generate nonce for wallet signature
+ * Generate cryptographically secure nonce for wallet signature
  * @param {string} address - Ethereum address
- * @returns {Promise<string>} - Nonce string
+ * @returns {Promise<string>} - Nonce string (64 hex characters)
  */
 export async function generateNonce(address) {
-  const nonce = Math.random().toString(36).substring(2, 15);
+  // Use cryptographically secure random bytes instead of Math.random()
+  const nonce = crypto.randomBytes(32).toString('hex');
   const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
 
   // Store nonce in database

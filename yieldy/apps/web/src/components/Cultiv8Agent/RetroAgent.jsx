@@ -23,6 +23,7 @@ export function RetroAgent({
   onRunAgent,
   onApprove,
   onReject,
+  onViewHistory,
 }) {
   const [isRunning, setIsRunning] = useState(false);
   const [isDark, toggleDark] = useDarkMode();
@@ -84,7 +85,7 @@ export function RetroAgent({
           <RetroButton href="/settings">
             AGENT SETTINGS
           </RetroButton>
-          <RetroButton>
+          <RetroButton onClick={onViewHistory}>
             VIEW HISTORY
           </RetroButton>
         </div>

@@ -29,6 +29,7 @@ export function RetroSettings({
   onUpdateLimits,
   onRevoke,
   onAuthorize,
+  onUpgradeTier,
 }) {
   const [formData, setFormData] = useState({
     autoInvest: config?.auto_invest_enabled || false,
@@ -338,7 +339,11 @@ export function RetroSettings({
                 <h3 className="font-pixel text-sm uppercase text-retro-fg">
                   ALL AVAILABLE TIERS
                 </h3>
-                <RetroButton size="small">
+                <RetroButton
+                  size="small"
+                  onClick={onUpgradeTier}
+                  disabled={!isConnected}
+                >
                   [Ξ UPGRADE TIER]
                 </RetroButton>
               </div>

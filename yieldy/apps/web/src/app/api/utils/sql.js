@@ -8,12 +8,16 @@ const poolConfig = {
   // Maximum number of connections in the pool
   // Neon serverless auto-scales, but we can hint preferred size
   poolSize: parseInt(process.env.DB_POOL_SIZE) || 20,
-  
-  // Connection timeout
-  connectionTimeoutMillis: 5000,
-  
-  // Idle timeout
-  idleTimeoutMillis: 30000,
+
+  // Connection timeout - how long to wait for a connection
+  connectionTimeoutMillis: parseInt(process.env.DB_CONNECTION_TIMEOUT) || 5000,
+
+  // Idle timeout - how long a connection can be idle before being closed
+  idleTimeoutMillis: parseInt(process.env.DB_IDLE_TIMEOUT) || 30000,
+
+  // Query timeout - maximum time a query can run (prevents hanging queries)
+  // This is critical for production stability
+  queryTimeoutMillis: parseInt(process.env.DB_QUERY_TIMEOUT) || 15000,
 };
 
 const NullishQueryFunction = () => {

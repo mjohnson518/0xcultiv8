@@ -13,6 +13,9 @@ import { nextPublicProcessEnv } from './plugins/nextPublicProcessEnv';
 import { restart } from './plugins/restart';
 import { restartEnvFileChange } from './plugins/restartEnvFileChange';
 
+// Check if building for Cloudflare Pages (SPA mode - no server)
+const isCloudflarePages = process.env.CLOUDFLARE_PAGES === 'true';
+
 export default defineConfig({
   // Keep them available via import.meta.env.NEXT_PUBLIC_*
   envPrefix: 'NEXT_PUBLIC_',
@@ -46,7 +49,9 @@ export default defineConfig({
   plugins: [
     nextPublicProcessEnv(),
     restartEnvFileChange(),
-    reactRouterHonoServer({
+    // Only include Hono server plugin when NOT building for Cloudflare Pages
+    // Cloudflare Pages is static-only, no SSR server
+    !isCloudflarePages && reactRouterHonoServer({
       serverEntryPoint: './__create/index.ts',
       runtime: 'node',
     }),
@@ -76,7 +81,7 @@ export default defineConfig({
     tsconfigPaths(),
     aliases(),
     layoutWrapperPlugin(),
-  ],
+  ].filter(Boolean),
   resolve: {
     alias: {
       lodash: 'lodash-es',

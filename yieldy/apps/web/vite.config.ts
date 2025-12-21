@@ -19,6 +19,13 @@ export default defineConfig({
   build: {
     target: 'esnext', // Support top-level await
     minify: 'esbuild',
+    rollupOptions: {
+      // Externalize optional dependencies that may not be installed
+      external: [
+        '@aws-sdk/client-kms',
+        '@aws-sdk/client-secrets-manager',
+      ],
+    },
   },
   optimizeDeps: {
     // Explicitly include fast-glob, since it gets dynamically imported and we

@@ -1,5 +1,5 @@
 import { getToken } from '@auth/core/jwt';
-import { logger } from '../utils/logger.js';
+import { log as logger } from '../utils/logger.js';
 
 /**
  * Check if we're in a safe development environment

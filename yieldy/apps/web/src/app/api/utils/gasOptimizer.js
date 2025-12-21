@@ -1,5 +1,5 @@
 import { ethers } from 'ethers';
-import { logger } from './logger.js';
+import { log as logger } from './logger.js';
 
 // Chainlink ETH/USD Price Feed addresses
 const CHAINLINK_ETH_USD = {

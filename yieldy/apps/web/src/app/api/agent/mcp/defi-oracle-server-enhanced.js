@@ -23,7 +23,7 @@ import {
 import { getProtocolAdapter } from '../../protocols/adapters.js';
 import { riskEngine } from '../../utils/riskEngine.js';
 import { portfolioOptimizer } from '../../utils/portfolioOptimizer.js';
-import { logger } from '../../utils/logger.js';
+import { log as logger } from '../../utils/logger.js';
 import sql from '../../utils/sql.js';
 import MCP_CONFIG from './config.js';
 import crypto from 'crypto';

@@ -10,7 +10,7 @@ import { z } from 'zod';
 import { mevProtection, assessMEVRisk } from '@/app/api/utils/mevProtection';
 import { alertManager, ALERT_TEMPLATES, SEVERITY, ALERT_TYPES } from '@/app/api/utils/alerting';
 import { getAgentSigner, KEY_TYPES } from '@/app/api/utils/keyManager';
-import { logger } from '@/app/api/utils/logger';
+import { log as logger } from '@/app/api/utils/logger';
 
 // Schema for execute request
 const ExecuteSchema = z.object({

@@ -1,0 +1,38 @@
+# Cloudflare Pages Configuration for 0xCultiv8
+# https://developers.cloudflare.com/pages/configuration/wrangler-configuration/
+
+name = "0xcultiv8"
+compatibility_date = "2024-12-01"
+
+# Enable Node.js compatibility for packages like ethers, pg, etc.
+compatibility_flags = ["nodejs_compat"]
+
+# Pages-specific configuration
+pages_build_output_dir = "./build/client"
+
+# Development settings
+[dev]
+port = 8788
+local_protocol = "http"
+
+# Environment variables (non-secret defaults)
+# Secrets should be added via: npx wrangler pages secret put <KEY>
+[vars]
+NODE_ENV = "production"
+NEXT_PUBLIC_DEMO_MODE = "true"
+
+# Production environment overrides
+[env.production]
+name = "0xcultiv8"
+
+[env.production.vars]
+NODE_ENV = "production"
+NEXT_PUBLIC_DEMO_MODE = "false"
+
+# Preview/staging environment
+[env.preview]
+name = "0xcultiv8-preview"
+
+[env.preview.vars]
+NODE_ENV = "development"
+NEXT_PUBLIC_DEMO_MODE = "true"

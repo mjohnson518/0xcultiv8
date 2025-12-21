@@ -1,12 +1,29 @@
 import { ethers } from 'ethers';
+import { logger } from './logger.js';
+
+// Chainlink ETH/USD Price Feed addresses
+const CHAINLINK_ETH_USD = {
+  ethereum: '0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419',
+  base: '0x71041dddad3595F9CEd3DcCFBe3D1F4b0a16Bb70',
+  sepolia: '0x694AA1769357215DE4FAC081bf1f309aDC325306',
+  'base-sepolia': '0x4aDC67696bA383F43DD60A9e78F2C97Fbbfc7cb1',
+};
+
+// Chainlink Aggregator V3 Interface ABI (minimal)
+const CHAINLINK_ABI = [
+  'function latestRoundData() external view returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)',
+  'function decimals() external view returns (uint8)',
+];
 
 /**
  * Gas Optimization and MEV Protection Utilities
  * Optimizes gas prices and protects against MEV attacks
  */
 export class GasOptimizer {
-  constructor(provider) {
+  constructor(provider, chainId = 'ethereum') {
     this.provider = provider;
+    this.chainId = chainId;
+    this.priceCache = { price: null, timestamp: 0, ttl: 60000 }; // 1 minute cache
   }
 
   /**
@@ -166,13 +183,64 @@ export class GasOptimizer {
   }
 
   /**
-   * Get current ETH price
+   * Get current ETH price from Chainlink oracle
+   * Uses caching to reduce RPC calls
    * @returns {Promise<number>} - ETH price in USD
    */
   async getETHPrice() {
-    // TODO: Integrate with Chainlink price feed or reliable oracle
-    // For now, return conservative estimate
-    return 3000; // $3000 per ETH
+    // Check cache first
+    const now = Date.now();
+    if (this.priceCache.price && (now - this.priceCache.timestamp) < this.priceCache.ttl) {
+      return this.priceCache.price;
+    }
+
+    try {
+      const feedAddress = CHAINLINK_ETH_USD[this.chainId] || CHAINLINK_ETH_USD.ethereum;
+      const priceFeed = new ethers.Contract(feedAddress, CHAINLINK_ABI, this.provider);
+
+      const [roundData, decimals] = await Promise.all([
+        priceFeed.latestRoundData(),
+        priceFeed.decimals(),
+      ]);
+
+      const { answer, updatedAt } = roundData;
+
+      // Validate data freshness (must be updated within last hour)
+      const dataAge = Math.floor(Date.now() / 1000) - Number(updatedAt);
+      if (dataAge > 3600) {
+        logger.warn('Chainlink price data is stale', { dataAge, chainId: this.chainId });
+        // Fall back to cached price or default
+        return this.priceCache.price || 3000;
+      }
+
+      // Validate answer is positive and reasonable
+      if (answer <= 0) {
+        logger.error('Invalid Chainlink price response', { answer: answer.toString() });
+        return this.priceCache.price || 3000;
+      }
+
+      // Convert to USD (answer is in 8 decimals for ETH/USD)
+      const price = Number(answer) / Math.pow(10, Number(decimals));
+
+      // Sanity check: ETH price should be between $100 and $100,000
+      if (price < 100 || price > 100000) {
+        logger.warn('ETH price outside expected range', { price, chainId: this.chainId });
+        return this.priceCache.price || 3000;
+      }
+
+      // Update cache
+      this.priceCache = { price, timestamp: now, ttl: 60000 };
+      logger.debug('Chainlink ETH price fetched', { price, chainId: this.chainId });
+
+      return price;
+    } catch (error) {
+      logger.error('Failed to fetch Chainlink price', {
+        error: error.message,
+        chainId: this.chainId,
+      });
+      // Return cached price or conservative fallback
+      return this.priceCache.price || 3000;
+    }
   }
 
   /**

@@ -1,4 +1,38 @@
 import { getToken } from '@auth/core/jwt';
+import { logger } from '../utils/logger.js';
+
+/**
+ * Check if we're in a safe development environment
+ * Multiple conditions must be true for demo mode to be allowed
+ */
+function isDemoModeAllowed() {
+  // Must explicitly enable demo mode
+  if (process.env.BYPASS_AUTH !== 'true' && process.env.NEXT_PUBLIC_DEMO_MODE !== 'true') {
+    return false;
+  }
+
+  // NEVER allow in production
+  if (process.env.NODE_ENV === 'production') {
+    logger.warn('Demo mode attempted in production - BLOCKED');
+    return false;
+  }
+
+  // NEVER allow if real RPC URLs are configured (indicates production-like env)
+  if (process.env.ETHEREUM_RPC_URL?.includes('mainnet') ||
+      process.env.BASE_RPC_URL?.includes('mainnet')) {
+    logger.warn('Demo mode blocked - mainnet RPC detected');
+    return false;
+  }
+
+  // NEVER allow if real database is configured
+  if (process.env.DATABASE_URL?.includes('neon.tech') &&
+      !process.env.DATABASE_URL?.includes('staging')) {
+    logger.warn('Demo mode blocked - production database detected');
+    return false;
+  }
+
+  return true;
+}
 
 /**
  * Authentication middleware
@@ -7,18 +41,18 @@ import { getToken } from '@auth/core/jwt';
  * @returns {Response|null} - Error response if unauthorized, null if authorized
  */
 export async function authMiddleware(request) {
-  // Demo mode bypass for testing
-  if (process.env.BYPASS_AUTH === 'true' || process.env.NEXT_PUBLIC_DEMO_MODE === 'true') {
-    console.warn('⚠️ Demo mode - auth bypassed');
+  // Demo mode bypass - ONLY in development with strict checks
+  if (isDemoModeAllowed()) {
+    logger.debug('Demo mode active - auth bypassed (development only)');
     request.user = {
       id: 'demo-user',
       address: '0xDemo0000000000000000000000000000000001',
       isDemo: true,
     };
-    return null; // No error, proceed
+    return null;
   }
-  
-  // Existing auth logic...
+
+  // Production auth logic...
   try {
     const token = await getToken({
       req: request,
@@ -54,7 +88,7 @@ export async function authMiddleware(request) {
 
     return null; // Success - proceed to next middleware/handler
   } catch (error) {
-    console.error('Auth middleware error:', error);
+    logger.error('Auth middleware error', { error: error.message });
     return new Response(
       JSON.stringify({
         error: 'Authentication error',

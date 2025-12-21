@@ -86,7 +86,7 @@ export class CircuitBreaker {
         context,
       });
     } catch (error) {
-      console.error('Failed to trip circuit breaker:', error);
+      log.error('Failed to trip circuit breaker', { error: error.message });
     }
   }
 
@@ -113,7 +113,7 @@ export class CircuitBreaker {
         pausedAt: result[0].paused_at || null,
       };
     } catch (error) {
-      console.error('Error checking circuit breaker:', error);
+      log.error('Error checking circuit breaker', { error: error.message });
       // Fail safe: assume paused if we can't check
       return { isPaused: true, reason: 'Unable to verify status', pausedAt: null };
     }
@@ -154,7 +154,7 @@ export class CircuitBreaker {
         message: `Agent operations resumed by ${resetBy}`,
       });
     } catch (error) {
-      console.error('Failed to reset circuit breaker:', error);
+      log.error('Failed to reset circuit breaker', { error: error.message });
       throw error;
     }
   }
@@ -191,9 +191,8 @@ export class CircuitBreaker {
 
       return result;
     } catch (error) {
-      // Fallback to console logging if AlertManager fails
-      console.error('🚨 ALERT (AlertManager failed):', alert);
-      log.error('Failed to send alert via AlertManager', { error: error.message, alert });
+      // Fallback to logger if AlertManager fails
+      log.error('ALERT - AlertManager failed', { alert, error: error.message });
       return { success: false, error: error.message };
     }
   }

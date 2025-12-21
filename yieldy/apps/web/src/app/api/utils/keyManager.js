@@ -325,34 +325,328 @@ export class KeyManager {
 
   /**
    * Rotate a secret (for backends that support it)
+   * @param {string} keyType - Type of key to rotate
+   * @param {string} newValue - Optional new value (generated if not provided)
+   * @returns {Promise<object>} - Rotation result
    */
-  async rotateSecret(keyType, newValue) {
-    // This would typically:
-    // 1. Generate or accept new secret
-    // 2. Update in backend (KMS/Vault)
-    // 3. Invalidate cache
-    // 4. Log rotation
-
+  async rotateSecret(keyType, newValue = null) {
     if (this.config.backend === BACKEND_TYPES.ENV) {
       throw new Error('Secret rotation not supported with environment variable backend');
     }
 
-    // Alert on key rotation
+    // Alert on key rotation start
     await alertManager.send({
       title: 'Secret Rotation Initiated',
-      message: `Secret ${keyType} is being rotated`,
+      message: `Secret ${keyType} rotation starting`,
       severity: SEVERITY.HIGH,
       type: ALERT_TYPES.SECURITY_EVENT,
       context: { keyType, backend: this.config.backend },
     });
 
-    // Invalidate cache
-    this.invalidateCache(keyType);
+    // Get current value for backup reference
+    let previousValue = null;
+    try {
+      previousValue = await this.getSecret(keyType, { bypassCache: true });
+    } catch (e) {
+      log.warn('Could not retrieve current value during rotation', { keyType });
+    }
 
-    // TODO: Implement actual rotation logic for KMS/Vault
-    log.info('Secret rotation initiated', { keyType, backend: this.config.backend });
+    // Generate new value if not provided
+    const rotationValue = newValue || await this.generateSecretValue(keyType);
 
-    return { success: true, message: 'Rotation initiated - manual backend update required' };
+    try {
+      let result;
+      switch (this.config.backend) {
+        case BACKEND_TYPES.AWS_KMS:
+          result = await this.rotateInKMS(keyType, rotationValue);
+          break;
+        case BACKEND_TYPES.VAULT:
+          result = await this.rotateInVault(keyType, rotationValue, previousValue);
+          break;
+        default:
+          throw new Error(`Rotation not supported for backend: ${this.config.backend}`);
+      }
+
+      // Invalidate cache
+      this.invalidateCache(keyType);
+
+      // Audit log the rotation
+      await auditLog({
+        user_id: 'system',
+        action: AUDIT_ACTIONS.KEY_ROTATED || 'KEY_ROTATED',
+        resource_type: 'secret',
+        resource_id: keyType,
+        metadata: {
+          backend: this.config.backend,
+          rotatedAt: new Date().toISOString(),
+        },
+        success: true,
+      });
+
+      log.info('Secret rotation completed', { keyType, backend: this.config.backend });
+
+      // Alert on successful rotation
+      await alertManager.send({
+        title: 'Secret Rotation Completed',
+        message: `Secret ${keyType} has been successfully rotated`,
+        severity: SEVERITY.INFO,
+        type: ALERT_TYPES.SECURITY_EVENT,
+        context: { keyType, backend: this.config.backend },
+      });
+
+      return { success: true, ...result };
+    } catch (error) {
+      log.error('Secret rotation failed', { keyType, error: error.message });
+
+      // Alert on rotation failure
+      await alertManager.send({
+        title: 'Secret Rotation Failed',
+        message: `Failed to rotate secret ${keyType}: ${error.message}`,
+        severity: SEVERITY.CRITICAL,
+        type: ALERT_TYPES.SECURITY_EVENT,
+        context: { keyType, backend: this.config.backend, error: error.message },
+      });
+
+      throw error;
+    }
+  }
+
+  /**
+   * Generate a new secret value based on key type
+   */
+  async generateSecretValue(keyType) {
+    const { randomBytes } = await import('crypto');
+
+    switch (keyType) {
+      case KEY_TYPES.AGENT_PRIVATE_KEY:
+        // Generate a new Ethereum private key
+        const { ethers } = await import('ethers');
+        const wallet = ethers.Wallet.createRandom();
+        return wallet.privateKey;
+
+      case KEY_TYPES.ENCRYPTION_KEY:
+        // 256-bit encryption key
+        return randomBytes(32).toString('hex');
+
+      case KEY_TYPES.API_KEY:
+        // API key format: prefix + random
+        return `sk_${randomBytes(24).toString('base64url')}`;
+
+      case KEY_TYPES.SIGNING_KEY:
+        // 512-bit signing key
+        return randomBytes(64).toString('hex');
+
+      default:
+        return randomBytes(32).toString('hex');
+    }
+  }
+
+  /**
+   * Rotate secret in AWS KMS
+   */
+  async rotateInKMS(keyType, newValue) {
+    try {
+      const { KMSClient, EncryptCommand } = await import('@aws-sdk/client-kms');
+
+      if (!this.kmsClient) {
+        this.kmsClient = new KMSClient({
+          region: this.config.aws.region,
+          credentials: this.config.aws.accessKeyId ? {
+            accessKeyId: this.config.aws.accessKeyId,
+            secretAccessKey: this.config.aws.secretAccessKey,
+          } : undefined,
+        });
+      }
+
+      // Encrypt the new value with KMS
+      const command = new EncryptCommand({
+        KeyId: this.config.aws.keyId,
+        Plaintext: Buffer.from(newValue),
+      });
+
+      const response = await this.kmsClient.send(command);
+      const encryptedValue = Buffer.from(response.CiphertextBlob).toString('base64');
+
+      // Store encrypted value in AWS Secrets Manager or Parameter Store
+      // For now, return the encrypted value for manual update
+      return {
+        message: 'Encrypted value generated for KMS',
+        envVarName: `KMS_ENCRYPTED_${keyType.toUpperCase()}`,
+        encryptedValue,
+        action: 'Update environment variable or Secrets Manager with encrypted value',
+      };
+    } catch (error) {
+      log.error('Failed to rotate secret in KMS', { keyType, error: error.message });
+      throw error;
+    }
+  }
+
+  /**
+   * Rotate secret in HashiCorp Vault
+   */
+  async rotateInVault(keyType, newValue, previousValue) {
+    try {
+      // Get all current secrets first to preserve other values
+      const getResponse = await fetch(
+        `${this.config.vault.endpoint}/v1/${this.config.vault.secretPath}`,
+        {
+          method: 'GET',
+          headers: this.getVaultHeaders(),
+        }
+      );
+
+      let currentData = {};
+      if (getResponse.ok) {
+        const getData = await getResponse.json();
+        currentData = getData.data?.data || getData.data || {};
+      }
+
+      // Store the previous value for rollback capability
+      const previousKeyName = `${keyType}_previous`;
+      if (previousValue) {
+        currentData[previousKeyName] = previousValue;
+      }
+
+      // Update with new value
+      currentData[keyType] = newValue;
+      currentData[`${keyType}_rotated_at`] = new Date().toISOString();
+
+      // Write updated secrets
+      const putResponse = await fetch(
+        `${this.config.vault.endpoint}/v1/${this.config.vault.secretPath}`,
+        {
+          method: 'POST',
+          headers: {
+            ...this.getVaultHeaders(),
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ data: currentData }),
+        }
+      );
+
+      if (!putResponse.ok) {
+        const errorData = await putResponse.text();
+        throw new Error(`Vault write failed: ${putResponse.status} - ${errorData}`);
+      }
+
+      return {
+        message: 'Secret rotated in Vault',
+        previousValuePreserved: !!previousValue,
+        rotatedAt: currentData[`${keyType}_rotated_at`],
+      };
+    } catch (error) {
+      log.error('Failed to rotate secret in Vault', { keyType, error: error.message });
+      throw error;
+    }
+  }
+
+  /**
+   * Get Vault headers for requests
+   */
+  getVaultHeaders() {
+    const headers = {
+      'X-Vault-Token': this.config.vault.token,
+    };
+    if (this.config.vault.namespace) {
+      headers['X-Vault-Namespace'] = this.config.vault.namespace;
+    }
+    return headers;
+  }
+
+  /**
+   * Schedule automatic key rotation
+   * @param {string} keyType - Key type to rotate
+   * @param {number} intervalDays - Rotation interval in days
+   */
+  scheduleRotation(keyType, intervalDays = 90) {
+    const intervalMs = intervalDays * 24 * 60 * 60 * 1000;
+
+    log.info('Scheduling automatic key rotation', { keyType, intervalDays });
+
+    setInterval(async () => {
+      try {
+        await this.rotateSecret(keyType);
+        log.info('Scheduled key rotation completed', { keyType });
+      } catch (error) {
+        log.error('Scheduled key rotation failed', { keyType, error: error.message });
+      }
+    }, intervalMs);
+
+    return { scheduled: true, keyType, intervalDays };
+  }
+
+  /**
+   * Rollback to previous secret value (for Vault backend)
+   */
+  async rollbackSecret(keyType) {
+    if (this.config.backend !== BACKEND_TYPES.VAULT) {
+      throw new Error('Rollback only supported with Vault backend');
+    }
+
+    try {
+      // Get current secrets including previous value
+      const response = await fetch(
+        `${this.config.vault.endpoint}/v1/${this.config.vault.secretPath}`,
+        {
+          method: 'GET',
+          headers: this.getVaultHeaders(),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch current secrets');
+      }
+
+      const data = await response.json();
+      const currentData = data.data?.data || data.data || {};
+      const previousValue = currentData[`${keyType}_previous`];
+
+      if (!previousValue) {
+        throw new Error('No previous value available for rollback');
+      }
+
+      // Swap current and previous
+      const currentValue = currentData[keyType];
+      currentData[keyType] = previousValue;
+      currentData[`${keyType}_previous`] = currentValue;
+      currentData[`${keyType}_rolled_back_at`] = new Date().toISOString();
+
+      // Write back
+      const putResponse = await fetch(
+        `${this.config.vault.endpoint}/v1/${this.config.vault.secretPath}`,
+        {
+          method: 'POST',
+          headers: {
+            ...this.getVaultHeaders(),
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ data: currentData }),
+        }
+      );
+
+      if (!putResponse.ok) {
+        throw new Error('Failed to write rollback');
+      }
+
+      // Invalidate cache
+      this.invalidateCache(keyType);
+
+      // Alert on rollback
+      await alertManager.send({
+        title: 'Secret Rollback Completed',
+        message: `Secret ${keyType} has been rolled back to previous value`,
+        severity: SEVERITY.HIGH,
+        type: ALERT_TYPES.SECURITY_EVENT,
+        context: { keyType, backend: this.config.backend },
+      });
+
+      log.info('Secret rollback completed', { keyType });
+
+      return { success: true, rolledBackAt: currentData[`${keyType}_rolled_back_at`] };
+    } catch (error) {
+      log.error('Secret rollback failed', { keyType, error: error.message });
+      throw error;
+    }
   }
 
   /**

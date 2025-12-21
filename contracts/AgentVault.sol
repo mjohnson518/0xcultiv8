@@ -29,9 +29,12 @@ contract AgentVault is IEIP7702Vault, Ownable, ReentrancyGuard {
     
     /// @notice User balances
     mapping(address => uint256) public balances;
-    
+
     /// @notice Emergency pause state
     bool public paused;
+
+    /// @notice Whitelisted protocols the vault can interact with
+    mapping(address => bool) public whitelistedProtocols;
     
     /// @notice Minimum deposit amount
     uint256 public constant MIN_DEPOSIT = 10 * 1e6; // $10 USDC
@@ -88,12 +91,41 @@ contract AgentVault is IEIP7702Vault, Ownable, ReentrancyGuard {
     ) external nonReentrant whenNotPaused returns (bytes memory result) {
         require(msg.sender == cultiv8Agent, "Only agent can delegate");
         require(target != address(0), "Invalid target");
-        
+        require(whitelistedProtocols[target], "Protocol not whitelisted");
+
         (bool success, bytes memory returnData) = target.call(data);
         require(success, "Delegated call failed");
-        
+
         emit Delegated(msg.sender, target, data);
         return returnData;
+    }
+
+    /**
+     * @notice Admin function to whitelist protocols
+     * @param protocol Protocol address to whitelist
+     * @param status true to whitelist, false to remove
+     */
+    function setProtocolWhitelist(address protocol, bool status) external onlyOwner {
+        require(protocol != address(0), "Invalid protocol address");
+        whitelistedProtocols[protocol] = status;
+        emit ProtocolWhitelisted(protocol, status);
+    }
+
+    /**
+     * @notice Batch whitelist multiple protocols
+     * @param protocols Array of protocol addresses
+     * @param statuses Array of whitelist statuses
+     */
+    function batchSetProtocolWhitelist(
+        address[] calldata protocols,
+        bool[] calldata statuses
+    ) external onlyOwner {
+        require(protocols.length == statuses.length, "Length mismatch");
+        for (uint256 i = 0; i < protocols.length; i++) {
+            require(protocols[i] != address(0), "Invalid protocol address");
+            whitelistedProtocols[protocols[i]] = statuses[i];
+            emit ProtocolWhitelisted(protocols[i], statuses[i]);
+        }
     }
     
     /**

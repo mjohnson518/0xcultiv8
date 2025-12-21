@@ -10,6 +10,7 @@ import { z } from 'zod';
 import { mevProtection, assessMEVRisk } from '@/app/api/utils/mevProtection';
 import { alertManager, ALERT_TEMPLATES, SEVERITY, ALERT_TYPES } from '@/app/api/utils/alerting';
 import { getAgentSigner, KEY_TYPES } from '@/app/api/utils/keyManager';
+import { logger } from '@/app/api/utils/logger';
 
 // Schema for execute request
 const ExecuteSchema = z.object({
@@ -59,7 +60,7 @@ export async function POST(request) {
     try {
       agentWallet = await getAgentSigner(provider);
     } catch (keyError) {
-      console.error('Failed to get agent signer:', keyError.message);
+      logger.error('Failed to get agent signer', { error: keyError.message });
       return Response.json({
         success: false,
         error: 'Agent wallet not configured or unavailable',
@@ -82,7 +83,8 @@ export async function POST(request) {
 
     // Log MEV risk for monitoring
     if (mevRisk.shouldUseProtection) {
-      console.log(`[MEV] Risk assessment for ${action}:`, {
+      logger.info('MEV risk assessment', {
+        action,
         riskLevel: mevRisk.riskLevel,
         riskScore: mevRisk.riskScore,
         recommendations: mevRisk.recommendations.map(r => r.action),
@@ -160,7 +162,7 @@ export async function POST(request) {
       amount: Number(amountBN) / 1e6,
     });
   } catch (error) {
-    console.error('Execution error:', error);
+    logger.error('Transaction execution error', { error: error.message, stack: error.stack });
 
     // Record failure in circuit breaker
     await circuitBreaker.recordFailure('transaction_execution', {

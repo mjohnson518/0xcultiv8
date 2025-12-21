@@ -11,6 +11,7 @@ interface IEIP7702Vault {
     event Withdrawn(address indexed user, uint256 amount);
     event Delegated(address indexed user, address indexed target, bytes data);
     event EmergencyPaused(bool status);
+    event ProtocolWhitelisted(address indexed protocol, bool status);
 
     function deposit(uint256 amount) external;
 

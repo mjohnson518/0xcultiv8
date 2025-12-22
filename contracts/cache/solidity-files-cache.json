@@ -2,8 +2,8 @@
   "_format": "hh-sol-cache-2",
   "files": {
     "/Users/marcjohnson/Desktop/MJ/Stuff/MJ_Info/Projects/yieldy/contracts/AgentVault.sol": {
-      "lastModificationDate": 1760137689080,
-      "contentHash": "9994a3f70bd291a39ab712eacf3e9e40",
+      "lastModificationDate": 1766426320370,
+      "contentHash": "8ffdaef68f45c794a893eb4a6f412c29",
       "sourceName": "contracts/AgentVault.sol",
       "solcConfig": {
         "version": "0.8.20",
@@ -34,7 +34,8 @@
         "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol",
         "@openzeppelin/contracts/access/Ownable.sol",
         "@openzeppelin/contracts/utils/ReentrancyGuard.sol",
-        "./interfaces/IEIP7702Vault.sol"
+        "./interfaces/IEIP7702Vault.sol",
+        "./interfaces/IEIP8004Agent.sol"
       ],
       "versionPragmas": [
         "^0.8.20"
@@ -44,8 +45,8 @@
       ]
     },
     "/Users/marcjohnson/Desktop/MJ/Stuff/MJ_Info/Projects/yieldy/contracts/interfaces/IEIP7702Vault.sol": {
-      "lastModificationDate": 1760137987448,
-      "contentHash": "9f742b4d65a92f5d7354733939d0f3a8",
+      "lastModificationDate": 1766353224142,
+      "contentHash": "22c7a3e3100d1f46a75b099506d5f2aa",
       "sourceName": "contracts/interfaces/IEIP7702Vault.sol",
       "solcConfig": {
         "version": "0.8.20",
@@ -529,8 +530,8 @@
       ]
     },
     "/Users/marcjohnson/Desktop/MJ/Stuff/MJ_Info/Projects/yieldy/contracts/Cultiv8Agent.sol": {
-      "lastModificationDate": 1760137664050,
-      "contentHash": "116fbfd9336185593e68bfaa9aa64426",
+      "lastModificationDate": 1766426296962,
+      "contentHash": "07ddfa1ce4497b2963f216292a53695c",
       "sourceName": "contracts/Cultiv8Agent.sol",
       "solcConfig": {
         "version": "0.8.20",
@@ -569,8 +570,8 @@
       ]
     },
     "/Users/marcjohnson/Desktop/MJ/Stuff/MJ_Info/Projects/yieldy/contracts/interfaces/IEIP8004Agent.sol": {
-      "lastModificationDate": 1760137986930,
-      "contentHash": "4a433ad2d83110033d4bccb25c233266",
+      "lastModificationDate": 1766426330248,
+      "contentHash": "df2fe0f9e3cb4549ebc44629d0f962e6",
       "sourceName": "contracts/interfaces/IEIP8004Agent.sol",
       "solcConfig": {
         "version": "0.8.20",

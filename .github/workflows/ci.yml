@@ -133,17 +133,12 @@ jobs:
       - name: Install dependencies
         run: cd yieldy/apps/web && npm ci
 
-      - name: Run unit tests
-        run: cd yieldy/apps/web && npm test
+      - name: Run all tests (vitest + integration)
+        run: cd yieldy/apps/web && npm run test:ci
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/cultiv8_test
           REDIS_URL: redis://localhost:6379
-
-      - name: Run integration tests
-        run: cd yieldy/apps/web && npm run test:integration
-        env:
-          DATABASE_URL: postgresql://test:test@localhost:5432/cultiv8_test
-          REDIS_URL: redis://localhost:6379
+          NODE_ENV: test
 
   # =============================================================================
   # Build Check

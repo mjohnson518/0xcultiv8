@@ -36,9 +36,16 @@ contract AgentVault is IEIP7702Vault, Ownable, ReentrancyGuard {
 
     /// @notice Whitelisted protocols the vault can interact with
     mapping(address => bool) public whitelistedProtocols;
-    
+
+    /// @notice Allowed function selectors per protocol (protocol => selector => allowed)
+    /// @dev Prevents arbitrary calldata execution - only whitelisted operations permitted
+    mapping(address => mapping(bytes4 => bool)) public allowedSelectors;
+
     /// @notice Minimum deposit amount
     uint256 public constant MIN_DEPOSIT = 10 * 1e6; // $10 USDC
+
+    /// @notice Emitted when a function selector is whitelisted for a protocol
+    event SelectorWhitelisted(address indexed protocol, bytes4 indexed selector, bool allowed);
     
     modifier whenNotPaused() {
         require(!paused, "Contract is paused");
@@ -83,6 +90,7 @@ contract AgentVault is IEIP7702Vault, Ownable, ReentrancyGuard {
      * @notice Execute delegated call (EIP-7702 support)
      * @dev Allows authorized agent to execute strategies on behalf of users
      * SECURITY: Verifies per-user authorization via Cultiv8Agent contract
+     * SECURITY: Validates calldata against whitelisted function selectors
      * @param user User whose funds/authorization are being used
      * @param target Target contract to call
      * @param amount Amount being transacted (for limit tracking)
@@ -98,6 +106,11 @@ contract AgentVault is IEIP7702Vault, Ownable, ReentrancyGuard {
         require(target != address(0), "Invalid target");
         require(whitelistedProtocols[target], "Protocol not whitelisted");
         require(user != address(0), "Invalid user address");
+        require(data.length >= 4, "Invalid calldata");
+
+        // SECURITY: Extract and validate function selector against whitelist
+        bytes4 selector = bytes4(data[:4]);
+        require(allowedSelectors[target][selector], "Function not whitelisted");
 
         // SECURITY: Verify the caller is authorized by this user via EIP-8004
         IEIP8004Agent.AgentAuthorization memory auth = cultiv8Agent.getAuthorization(user);
@@ -143,6 +156,54 @@ contract AgentVault is IEIP7702Vault, Ownable, ReentrancyGuard {
             whitelistedProtocols[protocols[i]] = statuses[i];
             emit ProtocolWhitelisted(protocols[i], statuses[i]);
         }
+    }
+
+    /**
+     * @notice Whitelist a function selector for a protocol
+     * @dev Only whitelisted selectors can be called via executeDelegated
+     * @param protocol Protocol address
+     * @param selector Function selector (first 4 bytes of keccak256 of signature)
+     * @param allowed true to allow, false to disallow
+     */
+    function setSelectorWhitelist(
+        address protocol,
+        bytes4 selector,
+        bool allowed
+    ) external onlyOwner {
+        require(protocol != address(0), "Invalid protocol address");
+        require(selector != bytes4(0), "Invalid selector");
+        allowedSelectors[protocol][selector] = allowed;
+        emit SelectorWhitelisted(protocol, selector, allowed);
+    }
+
+    /**
+     * @notice Batch whitelist function selectors for a protocol
+     * @param protocol Protocol address
+     * @param selectors Array of function selectors
+     * @param statuses Array of allowed statuses
+     */
+    function batchSetSelectorWhitelist(
+        address protocol,
+        bytes4[] calldata selectors,
+        bool[] calldata statuses
+    ) external onlyOwner {
+        require(protocol != address(0), "Invalid protocol address");
+        require(selectors.length == statuses.length, "Length mismatch");
+        for (uint256 i = 0; i < selectors.length; i++) {
+            require(selectors[i] != bytes4(0), "Invalid selector");
+            allowedSelectors[protocol][selectors[i]] = statuses[i];
+            emit SelectorWhitelisted(protocol, selectors[i], statuses[i]);
+        }
+    }
+
+    /**
+     * @notice Check if a function selector is allowed for a protocol
+     * @param protocol Protocol address
+     * @param selector Function selector
+     * @return Whether the selector is whitelisted
+     */
+    function isSelectorAllowed(address protocol, bytes4 selector) external view returns (bool) {
+        return allowedSelectors[protocol][selector];
     }
     
     /**

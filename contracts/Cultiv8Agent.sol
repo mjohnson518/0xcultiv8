@@ -40,9 +40,13 @@ contract Cultiv8Agent is IEIP8004Agent, Ownable, ReentrancyGuard {
     /// @notice Minimum authorization amounts
     uint256 public constant MIN_AUTHORIZATION = 100 * 1e6; // $100 USDC (6 decimals)
     
-    /// @notice Maximum authorization amounts  
+    /// @notice Maximum authorization amounts
     uint256 public constant MAX_AUTHORIZATION = 1000000 * 1e6; // $1M USDC
-    
+
+    /// @notice Blocks per day (~7200 at 12s block time on Ethereum mainnet)
+    /// @dev Using block numbers instead of timestamps prevents miner manipulation
+    uint256 public constant BLOCKS_PER_DAY = 7200;
+
     constructor() Ownable(msg.sender) {}
     
     /**
@@ -68,7 +72,7 @@ contract Cultiv8Agent is IEIP8004Agent, Ownable, ReentrancyGuard {
             maxAmountPerTx: maxAmountPerTx,
             dailyLimit: dailyLimit,
             dailySpent: 0,
-            lastResetDay: block.timestamp / 1 days,
+            lastResetDay: block.number / BLOCKS_PER_DAY,
             active: true,
             authorizedAt: block.timestamp
         });
@@ -102,13 +106,13 @@ contract Cultiv8Agent is IEIP8004Agent, Ownable, ReentrancyGuard {
         require(amount <= auth.maxAmountPerTx, "Exceeds per-transaction limit");
         require(whitelistedProtocols[protocol], "Protocol not whitelisted");
         
-        // Check and update daily limit
-        uint256 currentDay = block.timestamp / 1 days;
+        // Check and update daily limit using block numbers (prevents timestamp manipulation)
+        uint256 currentDay = block.number / BLOCKS_PER_DAY;
         if (currentDay > auth.lastResetDay) {
             auth.dailySpent = 0;
             auth.lastResetDay = currentDay;
         }
-        
+
         require(auth.dailySpent + amount <= auth.dailyLimit, "Exceeds daily limit");
         auth.dailySpent += amount;
         
@@ -207,14 +211,14 @@ contract Cultiv8Agent is IEIP8004Agent, Ownable, ReentrancyGuard {
      */
     function canExecute(address user, uint256 amount) external view returns (bool) {
         AgentAuthorization storage auth = authorizations[user];
-        
+
         if (paused || !auth.active || amount > auth.maxAmountPerTx) {
             return false;
         }
-        
-        uint256 currentDay = block.timestamp / 1 days;
+
+        uint256 currentDay = block.number / BLOCKS_PER_DAY;
         uint256 dailySpent = (currentDay > auth.lastResetDay) ? 0 : auth.dailySpent;
-        
+
         return (dailySpent + amount <= auth.dailyLimit);
     }
     
@@ -225,12 +229,12 @@ contract Cultiv8Agent is IEIP8004Agent, Ownable, ReentrancyGuard {
      */
     function getRemainingDailyLimit(address user) external view returns (uint256 remaining) {
         AgentAuthorization storage auth = authorizations[user];
-        
+
         if (!auth.active) return 0;
-        
-        uint256 currentDay = block.timestamp / 1 days;
+
+        uint256 currentDay = block.number / BLOCKS_PER_DAY;
         uint256 dailySpent = (currentDay > auth.lastResetDay) ? 0 : auth.dailySpent;
-        
+
         return auth.dailyLimit > dailySpent ? auth.dailyLimit - dailySpent : 0;
     }
 }

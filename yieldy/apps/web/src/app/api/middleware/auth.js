@@ -41,54 +41,132 @@ function validateAuthSecret() {
   return true;
 }
 
+// Known production hostnames - demo mode will NEVER be allowed on these
+const PRODUCTION_HOSTNAMES = [
+  '0xcultiv8.xyz',
+  'cultiv8.finance',
+  'cultiv8.com',
+  'api.0xcultiv8.xyz',
+  'app.0xcultiv8.xyz',
+];
+
+// Demo mode cache to avoid repeated checks
+let demoModeResult = null;
+let demoModeCheckTime = 0;
+const DEMO_MODE_CACHE_MS = 5000; // Re-check every 5 seconds
+
 /**
  * Check if we're in a safe development environment
  * Multiple conditions must be true for demo mode to be allowed
  * SECURITY: Demo mode is completely blocked in production with no exceptions
+ *
+ * This function implements defense-in-depth:
+ * 1. Runtime environment check (NODE_ENV)
+ * 2. Explicit opt-in required (BYPASS_AUTH or NEXT_PUBLIC_DEMO_MODE)
+ * 3. Production indicators blocked (RPC URLs, database URLs, domains)
+ * 4. Real funds indicators blocked (mainnet references)
  */
-function isDemoModeAllowed() {
-  // CRITICAL: Production check FIRST - no exceptions, no bypasses
+function isDemoModeAllowed(request = null) {
+  // Use cached result if recent (performance optimization)
+  if (demoModeResult !== null && Date.now() - demoModeCheckTime < DEMO_MODE_CACHE_MS) {
+    return demoModeResult;
+  }
+
+  // ==========================================================================
+  // LAYER 1: Runtime environment check - absolute first gate
+  // ==========================================================================
   if (process.env.NODE_ENV === 'production') {
-    // Force disable demo mode variables in production to prevent accidents
+    // Log security violation if demo mode vars are set in production
     if (process.env.BYPASS_AUTH === 'true' || process.env.NEXT_PUBLIC_DEMO_MODE === 'true') {
-      logger.error('SECURITY VIOLATION: Demo mode environment variables detected in production - BLOCKING');
+      logger.error('SECURITY VIOLATION: Demo mode environment variables detected in production - BLOCKING', {
+        bypassAuth: process.env.BYPASS_AUTH,
+        demoMode: process.env.NEXT_PUBLIC_DEMO_MODE,
+      });
     }
+    demoModeResult = false;
+    demoModeCheckTime = Date.now();
     return false;
   }
 
-  // Must explicitly enable demo mode
+  // ==========================================================================
+  // LAYER 2: Require explicit opt-in
+  // ==========================================================================
   if (process.env.BYPASS_AUTH !== 'true' && process.env.NEXT_PUBLIC_DEMO_MODE !== 'true') {
+    demoModeResult = false;
+    demoModeCheckTime = Date.now();
     return false;
   }
 
-  // Additional safety checks for development environments that mimic production
+  // ==========================================================================
+  // LAYER 3: Block if any production indicators detected
+  // ==========================================================================
 
-  // NEVER allow if real RPC URLs are configured (indicates production-like env)
-  if (process.env.ETHEREUM_RPC_URL?.includes('mainnet') ||
-      process.env.BASE_RPC_URL?.includes('mainnet') ||
-      process.env.ETHEREUM_RPC_URL?.includes('alchemy.com/v2') ||
-      process.env.ETHEREUM_RPC_URL?.includes('infura.io/v3')) {
+  // Check for production hostnames in request (if available)
+  if (request) {
+    try {
+      const host = request.headers?.get?.('host') || '';
+      if (PRODUCTION_HOSTNAMES.some(h => host.includes(h))) {
+        logger.error('Demo mode blocked - production hostname detected in request', { host });
+        demoModeResult = false;
+        demoModeCheckTime = Date.now();
+        return false;
+      }
+    } catch {
+      // Ignore request parsing errors
+    }
+  }
+
+  // Check production RPC URLs (indicates real mainnet access)
+  const ethereumRpc = process.env.ETHEREUM_RPC_URL || '';
+  const baseRpc = process.env.BASE_RPC_URL || '';
+
+  if (ethereumRpc.includes('mainnet') || baseRpc.includes('mainnet') ||
+      ethereumRpc.includes('alchemy.com/v2') || ethereumRpc.includes('infura.io/v3')) {
     logger.warn('Demo mode blocked - production RPC detected');
+    demoModeResult = false;
+    demoModeCheckTime = Date.now();
     return false;
   }
 
-  // NEVER allow if real database is configured
-  if (process.env.DATABASE_URL?.includes('neon.tech') &&
-      !process.env.DATABASE_URL?.includes('staging') &&
-      !process.env.DATABASE_URL?.includes('dev')) {
+  // Check for production database (neon.tech without staging/dev qualifier)
+  const dbUrl = process.env.DATABASE_URL || '';
+  if (dbUrl.includes('neon.tech') &&
+      !dbUrl.includes('staging') && !dbUrl.includes('dev') && !dbUrl.includes('test')) {
     logger.warn('Demo mode blocked - production database detected');
+    demoModeResult = false;
+    demoModeCheckTime = Date.now();
     return false;
   }
 
-  // NEVER allow if production domain is set
-  if (process.env.AUTH_URL?.includes('0xcultiv8') ||
-      process.env.AUTH_URL?.includes('cultiv8.finance') ||
-      process.env.NEXT_PUBLIC_APP_URL?.includes('0xcultiv8')) {
-    logger.warn('Demo mode blocked - production domain detected');
+  // Check for production domains in configuration
+  const authUrl = process.env.AUTH_URL || '';
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || '';
+
+  for (const prodHost of PRODUCTION_HOSTNAMES) {
+    if (authUrl.includes(prodHost) || appUrl.includes(prodHost)) {
+      logger.warn('Demo mode blocked - production domain detected', { authUrl, appUrl });
+      demoModeResult = false;
+      demoModeCheckTime = Date.now();
+      return false;
+    }
+  }
+
+  // Check for Railway or other production platform indicators
+  if (process.env.RAILWAY_ENVIRONMENT === 'production' ||
+      process.env.VERCEL_ENV === 'production' ||
+      process.env.FLY_APP_NAME) {
+    logger.warn('Demo mode blocked - production platform detected');
+    demoModeResult = false;
+    demoModeCheckTime = Date.now();
     return false;
   }
 
+  // ==========================================================================
+  // All checks passed - demo mode is allowed
+  // ==========================================================================
   logger.debug('Demo mode allowed in development environment');
+  demoModeResult = true;
+  demoModeCheckTime = Date.now();
   return true;
 }
 
@@ -116,8 +194,8 @@ export async function authMiddleware(request) {
     );
   }
 
-  // Demo mode bypass - ONLY in development with strict checks
-  if (isDemoModeAllowed()) {
+  // Demo mode bypass - ONLY in development with strict multi-layer checks
+  if (isDemoModeAllowed(request)) {
     logger.debug('Demo mode active - auth bypassed (development only)');
     request.user = {
       id: 'demo-user',

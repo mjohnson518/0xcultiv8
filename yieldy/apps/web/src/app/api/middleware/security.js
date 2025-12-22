@@ -8,12 +8,49 @@
 import crypto from 'crypto';
 import { log as logger } from '../utils/logger.js';
 
-// In-memory token store (would use Redis in production for multi-instance)
-const csrfTokens = new Map();
-const TOKEN_EXPIRY_MS = 3600000; // 1 hour
+// =============================================================================
+// CSRF Token Storage
+// =============================================================================
+// WARNING: In-memory storage is NOT suitable for production deployments with
+// multiple instances. Tokens will not be shared across load-balanced servers.
+// For production, configure Redis via REDIS_URL environment variable.
+// =============================================================================
 
-// Clean up expired tokens periodically
+let csrfTokens;
+let redisClient = null;
+
+// Initialize storage based on environment
+async function initCSRFStorage() {
+  if (process.env.REDIS_URL && process.env.NODE_ENV === 'production') {
+    try {
+      const { createClient } = await import('redis');
+      redisClient = createClient({ url: process.env.REDIS_URL });
+      await redisClient.connect();
+      logger.info('CSRF storage: Using Redis for distributed token management');
+      return;
+    } catch (error) {
+      logger.error('Failed to connect to Redis for CSRF storage', { error: error.message });
+      logger.warn('CSRF storage: Falling back to in-memory (NOT RECOMMENDED FOR PRODUCTION)');
+    }
+  }
+
+  if (process.env.NODE_ENV === 'production' && !process.env.REDIS_URL) {
+    logger.warn('CSRF storage: In-memory storage in production - set REDIS_URL for multi-instance support');
+  }
+
+  csrfTokens = new Map();
+}
+
+// Initialize on module load
+initCSRFStorage().catch(console.error);
+
+const TOKEN_EXPIRY_MS = 3600000; // 1 hour
+const CSRF_KEY_PREFIX = 'csrf:';
+
+// Clean up expired tokens periodically (in-memory only, Redis handles TTL automatically)
 setInterval(() => {
+  if (!csrfTokens) return; // Redis mode or not initialized yet
+
   const now = Date.now();
   for (const [token, data] of csrfTokens.entries()) {
     if (now > data.expiresAt) {
@@ -25,39 +62,70 @@ setInterval(() => {
 /**
  * Generate a CSRF token for a session
  * @param {string} sessionId - Session or user identifier
- * @returns {string} - CSRF token
+ * @returns {Promise<string>} - CSRF token
  */
-export function generateCSRFToken(sessionId) {
+export async function generateCSRFToken(sessionId) {
   const token = crypto.randomBytes(32).toString('hex');
-  csrfTokens.set(token, {
+  const data = {
     sessionId,
     expiresAt: Date.now() + TOKEN_EXPIRY_MS,
     createdAt: Date.now(),
-  });
+  };
+
+  if (redisClient) {
+    // Redis storage with TTL
+    await redisClient.setEx(
+      `${CSRF_KEY_PREFIX}${token}`,
+      Math.floor(TOKEN_EXPIRY_MS / 1000),
+      JSON.stringify(data)
+    );
+  } else if (csrfTokens) {
+    // In-memory fallback
+    csrfTokens.set(token, data);
+  }
+
   return token;
 }
 
 /**
- * Validate a CSRF token
+ * Validate a CSRF token (single-use - token is consumed after validation)
  * @param {string} token - Token to validate
  * @param {string} sessionId - Expected session ID
- * @returns {boolean} - True if valid
+ * @returns {Promise<boolean>} - True if valid
  */
-export function validateCSRFToken(token, sessionId) {
+export async function validateCSRFToken(token, sessionId) {
   if (!token || !sessionId) return false;
 
-  const data = csrfTokens.get(token);
-  if (!data) return false;
+  let data;
 
-  if (Date.now() > data.expiresAt) {
+  if (redisClient) {
+    // Redis storage - get and delete atomically to prevent reuse
+    const key = `${CSRF_KEY_PREFIX}${token}`;
+    const rawData = await redisClient.getDel(key);
+    if (!rawData) return false;
+    try {
+      data = JSON.parse(rawData);
+    } catch {
+      return false;
+    }
+  } else if (csrfTokens) {
+    // In-memory storage
+    data = csrfTokens.get(token);
+    if (!data) return false;
+
+    // SECURITY: Delete token immediately to prevent reuse (single-use tokens)
     csrfTokens.delete(token);
+  } else {
     return false;
   }
 
-  if (data.sessionId !== sessionId) return false;
+  // Check expiration
+  if (Date.now() > data.expiresAt) {
+    return false;
+  }
 
-  // Token is valid - optionally delete for one-time use
-  // csrfTokens.delete(token);
+  // Check session match
+  if (data.sessionId !== sessionId) return false;
 
   return true;
 }
@@ -131,8 +199,9 @@ export async function csrfMiddleware(request, options = {}) {
     }
   }
 
-  // Validate token
-  if (!validateCSRFToken(token, sessionId)) {
+  // Validate token (async - supports Redis)
+  const isValid = await validateCSRFToken(token, sessionId);
+  if (!isValid) {
     logger.warn('CSRF validation failed', {
       hasToken: !!token,
       hasSession: !!sessionId,

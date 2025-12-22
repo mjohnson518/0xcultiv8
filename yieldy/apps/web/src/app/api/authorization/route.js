@@ -158,21 +158,113 @@ export async function POST(request) {
       );
     }
 
-    // Verify transaction on-chain
+    // Verify transaction on-chain with comprehensive security checks
     const rpcUrl = chainId === 1
       ? process.env.ETHEREUM_RPC_URL
       : process.env.BASE_RPC_URL;
 
-    if (rpcUrl) {
-      const provider = new ethers.JsonRpcProvider(rpcUrl);
-      const receipt = await provider.getTransactionReceipt(transactionHash);
+    if (!rpcUrl) {
+      return Response.json(
+        { success: false, error: 'RPC URL not configured for transaction verification' },
+        { status: 503 }
+      );
+    }
 
-      if (!receipt || receipt.status !== 1) {
-        return Response.json(
-          { success: false, error: 'Transaction not confirmed or failed' },
-          { status: 400 }
-        );
-      }
+    // Get contract addresses for this chain
+    if (!areContractsDeployed(chainId)) {
+      return Response.json(
+        { success: false, error: `Contracts not deployed on chain ${chainId}` },
+        { status: 400 }
+      );
+    }
+
+    const addresses = getContractAddresses(chainId);
+    const provider = new ethers.JsonRpcProvider(rpcUrl);
+
+    // Fetch both transaction and receipt for comprehensive verification
+    const [tx, receipt] = await Promise.all([
+      provider.getTransaction(transactionHash),
+      provider.getTransactionReceipt(transactionHash),
+    ]);
+
+    // SECURITY: Verify transaction exists and succeeded
+    if (!tx || !receipt) {
+      return Response.json(
+        { success: false, error: 'Transaction not found' },
+        { status: 404 }
+      );
+    }
+
+    if (receipt.status !== 1) {
+      return Response.json(
+        { success: false, error: 'Transaction failed on-chain' },
+        { status: 400 }
+      );
+    }
+
+    // SECURITY: Verify transaction was sent TO the Cultiv8Agent contract
+    const expectedContract = addresses.cultiv8Agent.toLowerCase();
+    if (!tx.to || tx.to.toLowerCase() !== expectedContract) {
+      logger.warn('Authorization sync blocked - invalid contract target', {
+        expected: expectedContract,
+        actual: tx.to,
+        transactionHash,
+      });
+      return Response.json(
+        { success: false, error: 'Transaction was not sent to Cultiv8Agent contract' },
+        { status: 400 }
+      );
+    }
+
+    // SECURITY: Verify transaction was sent BY the user (from address matches)
+    if (tx.from.toLowerCase() !== userAddress.toLowerCase()) {
+      logger.warn('Authorization sync blocked - sender mismatch', {
+        expected: userAddress,
+        actual: tx.from,
+        transactionHash,
+      });
+      return Response.json(
+        { success: false, error: 'Transaction sender does not match user address' },
+        { status: 400 }
+      );
+    }
+
+    // SECURITY: Verify the function called matches expected authorization functions
+    // authorizeAgent(address,uint256,uint256) = 0x3d0e5a3b
+    // revokeAgent() = 0x4714a0eb
+    // updateLimits(uint256,uint256) = 0x8d14e127
+    const validSelectors = {
+      '0x3d0e5a3b': 'authorize',  // authorizeAgent
+      '0x4714a0eb': 'revoke',     // revokeAgent
+      '0x8d14e127': 'update',     // updateLimits
+    };
+
+    const txSelector = tx.data.slice(0, 10).toLowerCase();
+    const expectedAction = validSelectors[txSelector];
+
+    if (!expectedAction) {
+      logger.warn('Authorization sync blocked - invalid function call', {
+        selector: txSelector,
+        validSelectors: Object.keys(validSelectors),
+        transactionHash,
+      });
+      return Response.json(
+        { success: false, error: 'Transaction is not a valid authorization function call' },
+        { status: 400 }
+      );
+    }
+
+    // Verify action matches the selector
+    if (expectedAction !== action) {
+      logger.warn('Authorization sync blocked - action mismatch', {
+        expectedAction,
+        providedAction: action,
+        transactionHash,
+      });
+      return Response.json(
+        { success: false, error: `Transaction is for ${expectedAction}, but ${action} was requested` },
+        { status: 400 }
+      );
     }
 
     // Upsert authorization record in database

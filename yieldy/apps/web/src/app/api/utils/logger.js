@@ -3,7 +3,182 @@ import winston from 'winston';
 /**
  * Structured Logging Configuration
  * Winston-based logging with JSON format for production observability
+ *
+ * CLOUD LOG SHIPPING:
+ * Supports multiple cloud logging backends via environment variables:
+ * - DATADOG_API_KEY: Ship logs to DataDog
+ * - LOGTAIL_SOURCE_TOKEN: Ship logs to Logtail/Better Stack
+ * - LOGDNA_KEY: Ship logs to LogDNA/Mezmo
+ * - LOG_SHIP_URL: Generic HTTP endpoint for custom log ingestion
  */
+
+// =============================================================================
+// Cloud Transport Configuration
+// =============================================================================
+
+/**
+ * Create HTTP transport for cloud log shipping
+ * Uses winston-transport base class
+ */
+class HttpTransport extends winston.Transport {
+  constructor(opts) {
+    super(opts);
+    this.url = opts.url;
+    this.headers = opts.headers || {};
+    this.batchSize = opts.batchSize || 10;
+    this.flushInterval = opts.flushInterval || 5000;
+    this.buffer = [];
+    this.timer = null;
+
+    // Start flush timer
+    this.startTimer();
+  }
+
+  startTimer() {
+    this.timer = setInterval(() => this.flush(), this.flushInterval);
+  }
+
+  async log(info, callback) {
+    setImmediate(() => this.emit('logged', info));
+
+    this.buffer.push({
+      ...info,
+      timestamp: info.timestamp || new Date().toISOString(),
+    });
+
+    if (this.buffer.length >= this.batchSize) {
+      await this.flush();
+    }
+
+    callback();
+  }
+
+  async flush() {
+    if (this.buffer.length === 0) return;
+
+    const logs = this.buffer.splice(0, this.buffer.length);
+
+    try {
+      await fetch(this.url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...this.headers,
+        },
+        body: JSON.stringify(logs),
+      });
+    } catch (error) {
+      // Re-add failed logs to buffer (with limit)
+      if (this.buffer.length < 1000) {
+        this.buffer.unshift(...logs);
+      }
+      console.error('[Logger] Failed to ship logs:', error.message);
+    }
+  }
+
+  close() {
+    if (this.timer) {
+      clearInterval(this.timer);
+    }
+    this.flush();
+  }
+}
+
+/**
+ * Create DataDog transport
+ */
+function createDataDogTransport(apiKey) {
+  const site = process.env.DD_SITE || 'datadoghq.com';
+  return new HttpTransport({
+    url: `https://http-intake.logs.${site}/api/v2/logs`,
+    headers: {
+      'DD-API-KEY': apiKey,
+    },
+    batchSize: 50,
+    flushInterval: 5000,
+  });
+}
+
+/**
+ * Create Logtail/Better Stack transport
+ */
+function createLogtailTransport(sourceToken) {
+  return new HttpTransport({
+    url: 'https://in.logtail.com',
+    headers: {
+      'Authorization': `Bearer ${sourceToken}`,
+    },
+    batchSize: 25,
+    flushInterval: 3000,
+  });
+}
+
+/**
+ * Create LogDNA/Mezmo transport
+ */
+function createLogDNATransport(ingestionKey) {
+  const hostname = process.env.HOSTNAME || 'cultiv8-api';
+  return new HttpTransport({
+    url: `https://logs.logdna.com/logs/ingest?hostname=${hostname}&now=${Date.now()}`,
+    headers: {
+      'apikey': ingestionKey,
+      'Content-Type': 'application/json',
+    },
+    batchSize: 25,
+    flushInterval: 3000,
+  });
+}
+
+/**
+ * Create generic HTTP transport
+ */
+function createGenericHttpTransport(url) {
+  return new HttpTransport({
+    url,
+    headers: {
+      'Authorization': process.env.LOG_SHIP_AUTH || '',
+    },
+    batchSize: 20,
+    flushInterval: 5000,
+  });
+}
+
+/**
+ * Get cloud transports based on environment
+ */
+function getCloudTransports() {
+  const transports = [];
+
+  // DataDog
+  if (process.env.DATADOG_API_KEY) {
+    transports.push(createDataDogTransport(process.env.DATADOG_API_KEY));
+    console.log('[Logger] DataDog log shipping enabled');
+  }
+
+  // Logtail/Better Stack
+  if (process.env.LOGTAIL_SOURCE_TOKEN) {
+    transports.push(createLogtailTransport(process.env.LOGTAIL_SOURCE_TOKEN));
+    console.log('[Logger] Logtail log shipping enabled');
+  }
+
+  // LogDNA/Mezmo
+  if (process.env.LOGDNA_KEY) {
+    transports.push(createLogDNATransport(process.env.LOGDNA_KEY));
+    console.log('[Logger] LogDNA log shipping enabled');
+  }
+
+  // Generic HTTP endpoint
+  if (process.env.LOG_SHIP_URL) {
+    transports.push(createGenericHttpTransport(process.env.LOG_SHIP_URL));
+    console.log('[Logger] Generic HTTP log shipping enabled');
+  }
+
+  return transports;
+}
+
+// =============================================================================
+// Winston Logger Configuration
+// =============================================================================
 
 // Define log levels
 const levels = {
@@ -57,6 +232,7 @@ const logger = winston.createLogger({
   defaultMeta: {
     service: 'cultiv8-api',
     environment: process.env.NODE_ENV || 'development',
+    version: process.env.VERSION || process.env.npm_package_version || 'unknown',
   },
   transports: [
     // Console output
@@ -78,6 +254,9 @@ const logger = winston.createLogger({
         maxFiles: 10,
       }),
     ] : []),
+
+    // Cloud log shipping transports (production only)
+    ...(isProduction ? getCloudTransports() : []),
   ],
 });
 

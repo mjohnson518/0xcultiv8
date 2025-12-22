@@ -1,0 +1,187 @@
+# Artillery Load Testing Configuration for Cultiv8 Platform
+#
+# Install Artillery: npm install -g artillery
+#
+# Run tests:
+#   artillery run load-testing/artillery-config.yml
+#   artillery run --target https://staging.cultiv8.xyz load-testing/artillery-config.yml
+#
+# Generate report:
+#   artillery run --output results.json load-testing/artillery-config.yml
+#   artillery report results.json
+
+config:
+  target: "http://localhost:3000"
+  phases:
+    # Warm-up phase
+    - duration: 60
+      arrivalRate: 5
+      name: "Warm up"
+    # Ramp up to target load
+    - duration: 120
+      arrivalRate: 5
+      rampTo: 25
+      name: "Ramp up"
+    # Sustain target load
+    - duration: 300
+      arrivalRate: 25
+      name: "Sustained load"
+    # Ramp down
+    - duration: 60
+      arrivalRate: 25
+      rampTo: 5
+      name: "Ramp down"
+
+  defaults:
+    headers:
+      Content-Type: "application/json"
+      Accept: "application/json"
+
+  # Variables for test data
+  variables:
+    walletAddresses:
+      - "0x1234567890123456789012345678901234567890"
+      - "0xabcdef1234567890abcdef1234567890abcdef12"
+      - "0x9876543210fedcba9876543210fedcba98765432"
+
+  # Custom plugins
+  plugins:
+    expect: {}
+
+  # Performance thresholds
+  ensure:
+    # 99th percentile response time under 2 seconds
+    p99: 2000
+    # 95th percentile response time under 1 second
+    p95: 1000
+    # Median response time under 500ms
+    median: 500
+    # Maximum error rate 5%
+    maxErrorRate: 5
+
+scenarios:
+  # Standard user flow
+  - name: "Standard User Journey"
+    weight: 70
+    flow:
+      # Health check
+      - get:
+          url: "/api/health"
+          expect:
+            - statusCode: 200
+
+      - think: 1
+
+      # Fetch opportunities
+      - get:
+          url: "/api/opportunities"
+          capture:
+            - json: "$[0].id"
+              as: "opportunityId"
+          expect:
+            - statusCode: 200
+            - contentType: "application/json"
+
+      - think: 2
+
+      # Fetch investments
+      - get:
+          url: "/api/investments"
+          expect:
+            - statusCode:
+                - 200
+                - 401
+
+      - think: 1
+
+      # Fetch performance data
+      - get:
+          url: "/api/performance?days=30&bucket=day"
+          expect:
+            - statusCode:
+                - 200
+                - 401
+
+      - think: 3
+
+  # Heavy API user (polling)
+  - name: "Polling Client"
+    weight: 20
+    flow:
+      - loop:
+          - get:
+              url: "/api/opportunities"
+          - think: 5
+        count: 10
+
+  # Agent config updates
+  - name: "Config Updates"
+    weight: 10
+    flow:
+      - get:
+          url: "/api/agent-config"
+          expect:
+            - statusCode:
+                - 200
+                - 401
+
+      - think: 2
+
+      # Note: In real tests, you'd need authentication
+      # - put:
+      #     url: "/api/agent-config"
+      #     json:
+      #       risk_tolerance: "balanced"
+      #       max_investment: 50000
+
+---
+# Smoke Test Configuration
+# Run with: artillery run --config load-testing/artillery-config.yml:smoke
+
+config:
+  target: "http://localhost:3000"
+  phases:
+    - duration: 30
+      arrivalRate: 1
+      name: "Smoke test"
+
+scenarios:
+  - name: "Basic Checks"
+    flow:
+      - get:
+          url: "/api/health"
+          expect:
+            - statusCode: 200
+      - get:
+          url: "/api/opportunities"
+          expect:
+            - statusCode: 200
+
+---
+# Stress Test Configuration
+# Run with: artillery run --config load-testing/artillery-config.yml:stress
+
+config:
+  target: "http://localhost:3000"
+  phases:
+    - duration: 60
+      arrivalRate: 10
+      name: "Baseline"
+    - duration: 120
+      arrivalRate: 50
+      name: "Heavy load"
+    - duration: 120
+      arrivalRate: 100
+      name: "Very heavy load"
+    - duration: 60
+      arrivalRate: 10
+      name: "Recovery"
+
+scenarios:
+  - name: "API Hammering"
+    flow:
+      - loop:
+          - get:
+              url: "/api/opportunities"
+          - think: 0.5
+        count: 20

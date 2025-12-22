@@ -68,7 +68,9 @@ describe('Demo Mode Detection', () => {
 
 describe('Demo Wallet Generation', () => {
   it('should generate consistent demo address format', () => {
-    const demoAddress = '0xDemo0000000000000000000000000000000001';
+    // Ethereum addresses are 42 chars: 0x prefix (2) + 40 hex chars
+    // 0x (2) + Demo (4) + 35 zeros (35) + 1 (1) = 42
+    const demoAddress = '0xDemo000000000000000000000000000000000001';
     expect(demoAddress.startsWith('0xDemo')).toBe(true);
     expect(demoAddress.length).toBe(42);
   });

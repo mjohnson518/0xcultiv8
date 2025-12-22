@@ -201,35 +201,39 @@ export async function POST(request) {
     // Get new tier fee structure
     const newTierConfig = FEE_TIERS[newTier];
 
-    // Update agent config with new tier
-    await sql`
-      UPDATE agent_config
-      SET 
-        user_tier = ${newTier},
-        management_fee_percent = ${newTierConfig.managementFeePercent},
-        performance_fee_percent = ${newTierConfig.performanceFeePercent},
-        tier_upgraded_at = NOW()
-      WHERE id = ${userConfig.id}
-    `;
+    // CRITICAL: Use transaction to ensure config update and history are atomic
+    // This prevents inconsistent state if one operation fails
+    await sql.transaction(async (txn) => {
+      // Update agent config with new tier
+      await txn`
+        UPDATE agent_config
+        SET
+          user_tier = ${newTier},
+          management_fee_percent = ${newTierConfig.managementFeePercent},
+          performance_fee_percent = ${newTierConfig.performanceFeePercent},
+          tier_upgraded_at = NOW()
+        WHERE id = ${userConfig.id}
+      `;
 
-    // Record upgrade in history
-    await sql`
-      INSERT INTO tier_upgrade_history (
-        user_address,
-        previous_tier,
-        new_tier,
-        trigger_reason,
-        aum_at_upgrade,
-        notes
-      ) VALUES (
-        ${userAddress},
-        ${currentTier},
-        ${newTier},
-        ${triggerReason},
-        ${currentAUM},
-        ${`Upgraded from ${currentTier} to ${newTier} due to ${triggerReason}`}
-      )
-    `;
+      // Record upgrade in history (within same transaction)
+      await txn`
+        INSERT INTO tier_upgrade_history (
+          user_address,
+          previous_tier,
+          new_tier,
+          trigger_reason,
+          aum_at_upgrade,
+          notes
+        ) VALUES (
+          ${userAddress},
+          ${currentTier},
+          ${newTier},
+          ${triggerReason},
+          ${currentAUM},
+          ${`Upgraded from ${currentTier} to ${newTier} due to ${triggerReason}`}
+        )
+      `;
+    });
 
     // Audit log
     await auditLog({

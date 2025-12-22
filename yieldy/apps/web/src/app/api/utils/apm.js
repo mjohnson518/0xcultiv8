@@ -8,7 +8,54 @@
  * - Custom metrics
  *
  * Supports multiple backends: Sentry, DataDog, New Relic
+ *
+ * DISTRIBUTED: Uses Redis for metrics storage across multiple instances
+ * Falls back to in-memory storage if Redis is not available
  */
+
+// ============================================================================
+// Redis Client for Distributed Metrics
+// ============================================================================
+
+let redisClient = null;
+let redisInitialized = false;
+
+const METRICS_PREFIX = 'apm:metrics:';
+const SPANS_PREFIX = 'apm:spans:';
+const METRICS_TTL_SECONDS = 86400; // 24 hours
+
+/**
+ * Initialize Redis client for distributed metrics
+ * Falls back to in-memory storage if Redis is not available
+ */
+async function initRedis() {
+  if (redisInitialized) return redisClient;
+
+  if (process.env.REDIS_URL) {
+    try {
+      const { createClient } = await import('redis');
+      redisClient = createClient({ url: process.env.REDIS_URL });
+      redisClient.on('error', (err) => {
+        console.error('[APM] Redis client error', { error: err.message });
+      });
+      await redisClient.connect();
+      console.log('[APM] Using Redis for distributed metrics storage');
+    } catch (error) {
+      console.warn('[APM] Redis connection failed, using in-memory fallback', {
+        error: error.message,
+      });
+      redisClient = null;
+    }
+  } else {
+    console.warn('[APM] REDIS_URL not set, using in-memory storage (not suitable for production)');
+  }
+
+  redisInitialized = true;
+  return redisClient;
+}
+
+// Initialize on module load
+initRedis().catch(console.error);
 
 // ============================================================================
 // APM Configuration
@@ -373,8 +420,9 @@ export class APMManager {
 
   /**
    * Record a custom metric
+   * DISTRIBUTED: Uses Redis for storage when available
    */
-  recordMetric(name, value, type = 'gauge', tags = {}) {
+  async recordMetric(name, value, type = 'gauge', tags = {}) {
     if (!this.config.enabled) return;
 
     const metric = {
@@ -385,12 +433,38 @@ export class APMManager {
       timestamp: Date.now(),
     };
 
-    // Store locally for aggregation
+    // Store for aggregation (Redis or in-memory)
     const key = `${name}:${JSON.stringify(tags)}`;
-    if (!this.metrics.has(key)) {
-      this.metrics.set(key, []);
+
+    if (redisClient) {
+      try {
+        const redisKey = `${METRICS_PREFIX}${key}`;
+        // Use Redis list for metric history
+        await redisClient.rPush(redisKey, JSON.stringify(metric));
+        // Trim to last 1000 entries to prevent unbounded growth
+        await redisClient.lTrim(redisKey, -1000, -1);
+        // Set TTL on the key
+        await redisClient.expire(redisKey, METRICS_TTL_SECONDS);
+      } catch (error) {
+        console.error('[APM] Redis error in recordMetric, falling back to local', { error: error.message });
+        // Fall back to local storage
+        if (!this.metrics.has(key)) {
+          this.metrics.set(key, []);
+        }
+        this.metrics.get(key).push(metric);
+      }
+    } else {
+      // In-memory fallback
+      if (!this.metrics.has(key)) {
+        this.metrics.set(key, []);
+      }
+      const values = this.metrics.get(key);
+      values.push(metric);
+      // Trim to last 1000 entries
+      if (values.length > 1000) {
+        values.splice(0, values.length - 1000);
+      }
     }
-    this.metrics.get(key).push(metric);
 
     // Send to backend
     switch (this.config.backend) {
@@ -567,10 +641,51 @@ export class APMManager {
 
   /**
    * Get aggregated metrics for Prometheus export
+   * DISTRIBUTED: Aggregates from Redis when available
    */
-  getMetrics() {
+  async getMetrics() {
     const result = {};
 
+    if (redisClient) {
+      try {
+        // Get all metric keys from Redis
+        const keys = await redisClient.keys(`${METRICS_PREFIX}*`);
+
+        for (const redisKey of keys) {
+          const key = redisKey.replace(METRICS_PREFIX, '');
+          const [name] = key.split(':');
+
+          // Get all values for this metric
+          const rawValues = await redisClient.lRange(redisKey, 0, -1);
+          const values = rawValues.map(v => JSON.parse(v));
+
+          if (values.length === 0) continue;
+
+          if (!result[name]) {
+            result[name] = {
+              type: values[0]?.type || 'gauge',
+              values: [],
+            };
+          }
+
+          // Aggregate based on type
+          const latestValue = values[values.length - 1]?.value || 0;
+          const sum = values.reduce((acc, v) => acc + v.value, 0);
+
+          result[name].values.push({
+            value: values[0]?.type === 'counter' ? sum : latestValue,
+            tags: JSON.parse(key.split(':')[1] || '{}'),
+          });
+        }
+
+        return result;
+      } catch (error) {
+        console.error('[APM] Redis error in getMetrics, falling back to local', { error: error.message });
+        // Fall through to in-memory fallback
+      }
+    }
+
+    // In-memory fallback
     for (const [key, values] of this.metrics.entries()) {
       const [name] = key.split(':');
 
@@ -592,6 +707,26 @@ export class APMManager {
     }
 
     return result;
+  }
+
+  /**
+   * Clear all metrics (useful for testing)
+   */
+  async clearMetrics() {
+    // Clear local metrics
+    this.metrics.clear();
+
+    // Clear Redis metrics
+    if (redisClient) {
+      try {
+        const keys = await redisClient.keys(`${METRICS_PREFIX}*`);
+        if (keys.length > 0) {
+          await redisClient.del(keys);
+        }
+      } catch (error) {
+        console.error('[APM] Failed to clear Redis metrics', { error: error.message });
+      }
+    }
   }
 }
 
@@ -630,19 +765,19 @@ export const apm = {
     return getAPM().trace(name, fn, options);
   },
 
-  recordMetric(name, value, type, tags) {
+  async recordMetric(name, value, type, tags) {
     return getAPM().recordMetric(name, value, type, tags);
   },
 
-  incrementCounter(name, value, tags) {
+  async incrementCounter(name, value, tags) {
     return getAPM().incrementCounter(name, value, tags);
   },
 
-  recordHistogram(name, value, tags) {
+  async recordHistogram(name, value, tags) {
     return getAPM().recordHistogram(name, value, tags);
   },
 
-  setGauge(name, value, tags) {
+  async setGauge(name, value, tags) {
     return getAPM().setGauge(name, value, tags);
   },
 
@@ -662,7 +797,11 @@ export const apm = {
     return getAPM().flush();
   },
 
-  getMetrics() {
+  async getMetrics() {
     return getAPM().getMetrics();
+  },
+
+  async clearMetrics() {
+    return getAPM().clearMetrics();
   },
 };

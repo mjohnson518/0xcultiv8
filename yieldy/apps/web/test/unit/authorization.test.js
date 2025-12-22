@@ -9,7 +9,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
-// Mock ethers
+// Mock ethers - must be hoisted before imports
 vi.mock('ethers', () => ({
   ethers: {
     isAddress: (addr) => /^0x[a-fA-F0-9]{40}$/.test(addr),
@@ -19,6 +19,9 @@ vi.mock('ethers', () => ({
   Contract: vi.fn(),
   BrowserProvider: vi.fn(),
 }));
+
+// Import after mock is defined
+import { ethers } from 'ethers';
 
 describe('Authorization Validation', () => {
   describe('Spending Limits', () => {
@@ -62,19 +65,16 @@ describe('Authorization Validation', () => {
 
   describe('Address Validation', () => {
     it('should validate correct Ethereum address', () => {
-      const { ethers } = require('ethers');
       const validAddress = '0x742d35Cc6634C0532925a3b844Bc9e7595f5dC01';
       expect(ethers.isAddress(validAddress)).toBe(true);
     });
 
     it('should reject invalid Ethereum address', () => {
-      const { ethers } = require('ethers');
       const invalidAddress = '0xinvalid';
       expect(ethers.isAddress(invalidAddress)).toBe(false);
     });
 
     it('should reject empty address', () => {
-      const { ethers } = require('ethers');
       expect(ethers.isAddress('')).toBe(false);
     });
   });
@@ -179,7 +179,6 @@ describe('Daily Limit Reset', () => {
 
 describe('USDC Amount Conversion', () => {
   it('should convert USD to USDC decimals (6)', () => {
-    const { ethers } = require('ethers');
     const usdAmount = 1000;
     const usdcAmount = ethers.parseUnits(usdAmount.toString(), 6);
 
@@ -187,7 +186,6 @@ describe('USDC Amount Conversion', () => {
   });
 
   it('should handle decimal amounts', () => {
-    const { ethers } = require('ethers');
     const usdAmount = 1000.50;
     const usdcAmount = ethers.parseUnits(usdAmount.toString(), 6);
 

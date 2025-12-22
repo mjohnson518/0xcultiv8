@@ -36,9 +36,15 @@ lerna-debug.log*
 
 # Misc
 *.pem
+*.bak
 .cache/
 .temp/
 .tmp/
+.vitest/
+
+# Solidity build artifacts
+contracts/artifacts/
+contracts/cache/
 
 # Expo
 .expo/
@@ -87,6 +93,11 @@ TASK_*.md
 
 # Deployment documentation (keep private)
 docs/MAINNET_DEPLOYMENT.md
+0xCULTIV8_PRODUCTION_READINESS_AUDIT.md
+PLATFORM_CAPABILITIES_ANALYSIS.md
+**/PRODUCTION_READINESS_REPORT.md
+**/X402_REVENUE_OPTIMIZATION.md
+**/mcp-evaluation-questions.md
 
 # Phase 8 baseline documentation (keep private)
 PHASE8_BASELINE.md

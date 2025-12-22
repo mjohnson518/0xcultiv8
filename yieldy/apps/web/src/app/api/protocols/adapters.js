@@ -15,19 +15,38 @@ const providers = new Map();
 // Track provider health for fallback
 const providerHealth = new Map();
 
+// Health check configuration
+const HEALTH_CHECK_CONFIG = {
+  intervalMs: parseInt(process.env.RPC_HEALTH_CHECK_INTERVAL) || 60000, // 1 minute
+  timeoutMs: parseInt(process.env.RPC_HEALTH_CHECK_TIMEOUT) || 5000, // 5 seconds
+  unhealthyThreshold: 3, // Mark unhealthy after 3 failed checks
+  healthyThreshold: 2, // Mark healthy after 2 successful checks
+};
+
+// Track consecutive health check results
+const healthCheckState = new Map();
+
 /**
  * RPC Configuration with fallbacks
+ *
+ * SECURITY: Public RPC fallbacks have been removed for production safety.
+ * Public RPCs have no SLA, are rate-limited, and could cause unpredictable behavior.
+ * If primary and backup RPCs fail, the system will fail gracefully with a clear error.
+ *
+ * Required environment variables:
+ * - ETHEREUM_RPC_URL: Primary Ethereum RPC (Alchemy, Infura, etc.)
+ * - ETHEREUM_RPC_URL_BACKUP: Backup Ethereum RPC (optional but recommended)
+ * - BASE_RPC_URL: Primary Base RPC
+ * - BASE_RPC_URL_BACKUP: Backup Base RPC (optional but recommended)
  */
 const RPC_CONFIG = {
   ethereum: {
     primary: () => process.env.ETHEREUM_RPC_URL,
     fallback: () => process.env.ETHEREUM_RPC_URL_BACKUP || process.env.ETHEREUM_RPC_FALLBACK,
-    publicFallback: 'https://eth.llamarpc.com', // Last resort public RPC
   },
   base: {
     primary: () => process.env.BASE_RPC_URL,
     fallback: () => process.env.BASE_RPC_URL_BACKUP || process.env.BASE_RPC_FALLBACK,
-    publicFallback: 'https://mainnet.base.org', // Last resort public RPC
   },
 };
 
@@ -40,6 +59,200 @@ const RETRY_CONFIG = {
   maxDelayMs: 10000,
   backoffMultiplier: 2,
 };
+
+// =============================================================================
+// RPC Health Checking
+// =============================================================================
+
+/**
+ * Check health of a single RPC endpoint
+ * @param {string} rpcUrl - RPC URL to check
+ * @param {number} timeoutMs - Timeout in milliseconds
+ * @returns {Promise<{healthy: boolean, latencyMs: number, blockNumber?: number}>}
+ */
+async function checkRpcHealth(rpcUrl, timeoutMs = HEALTH_CHECK_CONFIG.timeoutMs) {
+  const startTime = Date.now();
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+    const response = await fetch(rpcUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        method: 'eth_blockNumber',
+        params: [],
+        id: 1,
+      }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeout);
+
+    const latencyMs = Date.now() - startTime;
+
+    if (!response.ok) {
+      return { healthy: false, latencyMs, error: `HTTP ${response.status}` };
+    }
+
+    const data = await response.json();
+    if (data.error) {
+      return { healthy: false, latencyMs, error: data.error.message };
+    }
+
+    const blockNumber = parseInt(data.result, 16);
+    return { healthy: true, latencyMs, blockNumber };
+  } catch (error) {
+    const latencyMs = Date.now() - startTime;
+    return { healthy: false, latencyMs, error: error.message };
+  }
+}
+
+/**
+ * Run health check for a chain and update state
+ * @param {string} chain - Chain name
+ */
+async function runHealthCheck(chain) {
+  const config = RPC_CONFIG[chain];
+  if (!config) return;
+
+  const primaryUrl = config.primary();
+  const fallbackUrl = config.fallback();
+
+  // Check primary
+  if (primaryUrl) {
+    const result = await checkRpcHealth(primaryUrl);
+    updateHealthState(chain, 'primary', result.healthy);
+
+    if (result.healthy) {
+      console.log(`[RPC Health] ${chain} primary: OK (${result.latencyMs}ms, block ${result.blockNumber})`);
+    } else {
+      console.warn(`[RPC Health] ${chain} primary: FAILED - ${result.error}`);
+    }
+  }
+
+  // Check fallback
+  if (fallbackUrl) {
+    const result = await checkRpcHealth(fallbackUrl);
+    updateHealthState(chain, 'fallback', result.healthy);
+
+    if (result.healthy) {
+      console.log(`[RPC Health] ${chain} fallback: OK (${result.latencyMs}ms)`);
+    } else {
+      console.warn(`[RPC Health] ${chain} fallback: FAILED - ${result.error}`);
+    }
+  }
+}
+
+/**
+ * Update health check state with hysteresis
+ */
+function updateHealthState(chain, type, isHealthy) {
+  const key = `${chain}:${type}`;
+  const state = healthCheckState.get(key) || {
+    consecutiveSuccess: 0,
+    consecutiveFailure: 0,
+    healthy: true,
+  };
+
+  if (isHealthy) {
+    state.consecutiveSuccess++;
+    state.consecutiveFailure = 0;
+    if (state.consecutiveSuccess >= HEALTH_CHECK_CONFIG.healthyThreshold) {
+      state.healthy = true;
+    }
+  } else {
+    state.consecutiveFailure++;
+    state.consecutiveSuccess = 0;
+    if (state.consecutiveFailure >= HEALTH_CHECK_CONFIG.unhealthyThreshold) {
+      state.healthy = false;
+      // Update provider health map to trigger fallback
+      if (type === 'primary') {
+        providerHealth.set(chain, { healthy: false, lastCheck: Date.now() });
+        providers.delete(chain); // Force recreation with fallback
+      }
+    }
+  }
+
+  healthCheckState.set(key, state);
+}
+
+/**
+ * Get RPC health status for all chains
+ * @returns {object} Health status by chain
+ */
+export function getRpcHealthStatus() {
+  const status = {};
+
+  for (const chain of Object.keys(RPC_CONFIG)) {
+    const primaryState = healthCheckState.get(`${chain}:primary`);
+    const fallbackState = healthCheckState.get(`${chain}:fallback`);
+
+    status[chain] = {
+      primary: {
+        configured: !!RPC_CONFIG[chain].primary(),
+        healthy: primaryState?.healthy ?? true,
+        consecutiveFailures: primaryState?.consecutiveFailure ?? 0,
+      },
+      fallback: {
+        configured: !!RPC_CONFIG[chain].fallback(),
+        healthy: fallbackState?.healthy ?? true,
+        consecutiveFailures: fallbackState?.consecutiveFailure ?? 0,
+      },
+      usingFallback: providerHealth.get(chain)?.healthy === false,
+    };
+  }
+
+  return status;
+}
+
+/**
+ * Start periodic health checks
+ */
+let healthCheckInterval = null;
+
+export function startHealthChecks() {
+  if (healthCheckInterval) return;
+
+  console.log('[RPC Health] Starting periodic health checks');
+
+  // Run immediately
+  runAllHealthChecks();
+
+  // Then run periodically
+  healthCheckInterval = setInterval(
+    runAllHealthChecks,
+    HEALTH_CHECK_CONFIG.intervalMs
+  );
+}
+
+/**
+ * Stop periodic health checks
+ */
+export function stopHealthChecks() {
+  if (healthCheckInterval) {
+    clearInterval(healthCheckInterval);
+    healthCheckInterval = null;
+    console.log('[RPC Health] Stopped periodic health checks');
+  }
+}
+
+/**
+ * Run health checks for all chains
+ */
+async function runAllHealthChecks() {
+  for (const chain of Object.keys(RPC_CONFIG)) {
+    await runHealthCheck(chain);
+  }
+}
+
+// Auto-start health checks in production
+if (process.env.NODE_ENV === 'production' && process.env.RPC_HEALTH_CHECK_ENABLED !== 'false') {
+  // Delay start to allow app initialization
+  setTimeout(startHealthChecks, 10000);
+}
 
 /**
  * Sleep helper for retry delays
@@ -115,6 +328,7 @@ function getProvider(chain, forceNew = false) {
 
   // Try primary RPC
   let rpcUrl = config.primary();
+  let usingFallback = false;
 
   // If primary is not available or unhealthy, try fallback
   const health = providerHealth.get(cacheKey);
@@ -122,17 +336,17 @@ function getProvider(chain, forceNew = false) {
     rpcUrl = config.fallback();
     if (rpcUrl) {
       console.log(`[RPC] Using fallback RPC for ${chain}`);
+      usingFallback = true;
     }
   }
 
-  // Last resort: public fallback
+  // SECURITY: No public fallback - fail gracefully with clear error
   if (!rpcUrl) {
-    rpcUrl = config.publicFallback;
-    console.warn(`[RPC] Using public fallback RPC for ${chain} - not recommended for production`);
-  }
-
-  if (!rpcUrl) {
-    throw new Error(`No RPC URL available for chain: ${chain}`);
+    const errorMsg = `No RPC URL configured for chain: ${chain}. ` +
+      `Please set ${chain === 'ethereum' ? 'ETHEREUM_RPC_URL' : 'BASE_RPC_URL'} environment variable. ` +
+      'Public RPC fallbacks are disabled for security.';
+    console.error(`[RPC] ${errorMsg}`);
+    throw new Error(errorMsg);
   }
 
   const provider = new ethers.JsonRpcProvider(rpcUrl, undefined, {

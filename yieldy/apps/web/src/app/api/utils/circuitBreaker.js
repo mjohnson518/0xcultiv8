@@ -3,16 +3,62 @@ import { auditLog, AUDIT_ACTIONS } from './auditLogger';
 import { log, logSecurityEvent } from './logger';
 import { alertManager, SEVERITY, ALERT_TYPES, ALERT_TEMPLATES } from './alerting.js';
 
+// =============================================================================
+// Redis Client for Distributed Circuit Breaker
+// =============================================================================
+
+let redisClient = null;
+let redisInitialized = false;
+
+/**
+ * Initialize Redis client for distributed circuit breaker
+ * Falls back to in-memory storage if Redis is not available
+ */
+async function initRedis() {
+  if (redisInitialized) return redisClient;
+
+  if (process.env.REDIS_URL) {
+    try {
+      const { createClient } = await import('redis');
+      redisClient = createClient({ url: process.env.REDIS_URL });
+      redisClient.on('error', (err) => {
+        log.error('Redis client error (circuit breaker)', { error: err.message });
+      });
+      await redisClient.connect();
+      log.info('Circuit breaker: Using Redis for distributed failure tracking');
+    } catch (error) {
+      log.warn('Circuit breaker: Redis connection failed, using in-memory fallback', {
+        error: error.message,
+      });
+      redisClient = null;
+    }
+  } else {
+    log.warn('Circuit breaker: REDIS_URL not set, using in-memory storage (not suitable for production)');
+  }
+
+  redisInitialized = true;
+  return redisClient;
+}
+
+// Initialize on module load
+initRedis().catch(console.error);
+
+const CIRCUIT_BREAKER_PREFIX = 'cb:failures:';
+
 /**
  * Circuit Breaker Pattern Implementation
  * Automatically pauses agent operations when failure threshold is exceeded
  * Protects user funds from cascading failures
+ *
+ * DISTRIBUTED: Uses Redis for failure tracking across multiple instances
+ * Falls back to in-memory storage if Redis is not available
  */
 export class CircuitBreaker {
   constructor(config = {}) {
     this.threshold = config.threshold || parseInt(process.env.CIRCUIT_BREAKER_THRESHOLD) || 3;
     this.windowMs = config.windowMs || parseInt(process.env.CIRCUIT_BREAKER_WINDOW_MS) || 600000; // 10 minutes
-    this.failureCount = new Map();
+    // In-memory fallback for development/single-instance
+    this.localFailureCount = new Map();
   }
 
   /**
@@ -21,8 +67,37 @@ export class CircuitBreaker {
    * @param {object} context - Additional context about the failure
    */
   async recordFailure(key, context = {}) {
-    const count = (this.failureCount.get(key) || 0) + 1;
-    this.failureCount.set(key, count);
+    let count;
+
+    if (redisClient) {
+      // Use Redis for distributed failure tracking
+      const redisKey = `${CIRCUIT_BREAKER_PREFIX}${key}`;
+      try {
+        // Increment and set TTL atomically
+        count = await redisClient.incr(redisKey);
+        // Set expiry on first failure (window duration)
+        if (count === 1) {
+          await redisClient.expire(redisKey, Math.ceil(this.windowMs / 1000));
+        }
+      } catch (error) {
+        log.error('Redis error in recordFailure, falling back to local', { error: error.message });
+        // Fall back to local storage
+        count = (this.localFailureCount.get(key) || 0) + 1;
+        this.localFailureCount.set(key, count);
+      }
+    } else {
+      // In-memory fallback
+      count = (this.localFailureCount.get(key) || 0) + 1;
+      this.localFailureCount.set(key, count);
+
+      // Auto-reset counter after window (only for in-memory)
+      setTimeout(() => {
+        const current = this.localFailureCount.get(key) || 0;
+        if (current > 0) {
+          this.localFailureCount.set(key, current - 1);
+        }
+      }, this.windowMs);
+    }
 
     log.warn(`Circuit breaker failure recorded: ${key} (${count}/${this.threshold})`, context);
 
@@ -30,14 +105,6 @@ export class CircuitBreaker {
     if (count >= this.threshold) {
       await this.trip(key, context);
     }
-
-    // Auto-reset counter after window
-    setTimeout(() => {
-      const current = this.failureCount.get(key) || 0;
-      if (current > 0) {
-        this.failureCount.set(key, current - 1);
-      }
-    }, this.windowMs);
   }
 
   /**
@@ -62,6 +129,18 @@ export class CircuitBreaker {
       `;
 
       // Audit log
+      // Get current failure count for audit log
+      let currentFailureCount = 0;
+      if (redisClient) {
+        try {
+          currentFailureCount = parseInt(await redisClient.get(`${CIRCUIT_BREAKER_PREFIX}${reason}`)) || 0;
+        } catch (e) {
+          currentFailureCount = this.localFailureCount.get(reason) || 0;
+        }
+      } else {
+        currentFailureCount = this.localFailureCount.get(reason) || 0;
+      }
+
       await auditLog({
         user_id: 'system',
         action: AUDIT_ACTIONS.CIRCUIT_BREAKER_TRIGGERED,
@@ -70,13 +149,13 @@ export class CircuitBreaker {
           reason,
           context,
           threshold: this.threshold,
-          failureCount: this.failureCount.get(reason),
+          failureCount: currentFailureCount,
         },
         success: true,
       });
 
-      // Reset failure counter
-      this.failureCount.clear();
+      // Reset failure counters
+      await this.clearFailureCounts();
 
       // Send critical alert via PagerDuty, Slack, Discord, Email
       await this.sendAlert({
@@ -146,7 +225,7 @@ export class CircuitBreaker {
       });
 
       // Clear failure counters
-      this.failureCount.clear();
+      await this.clearFailureCounts();
 
       await this.sendAlert({
         severity: 'INFO',
@@ -198,18 +277,69 @@ export class CircuitBreaker {
   }
 
   /**
-   * Get failure statistics
-   * @returns {object} - Current failure counts
+   * Clear all failure counters
+   * Used when circuit breaker trips or is reset
    */
-  getStats() {
-    const stats = {};
-    for (const [key, count] of this.failureCount.entries()) {
-      stats[key] = {
-        failures: count,
-        threshold: this.threshold,
-        willTripAt: this.threshold - count,
-      };
+  async clearFailureCounts() {
+    // Clear local counters
+    this.localFailureCount.clear();
+
+    // Clear Redis counters
+    if (redisClient) {
+      try {
+        const keys = await redisClient.keys(`${CIRCUIT_BREAKER_PREFIX}*`);
+        if (keys.length > 0) {
+          await redisClient.del(keys);
+        }
+      } catch (error) {
+        log.error('Failed to clear Redis failure counters', { error: error.message });
+      }
     }
+  }
+
+  /**
+   * Get failure statistics
+   * @returns {Promise<object>} - Current failure counts
+   */
+  async getStats() {
+    const stats = {};
+
+    if (redisClient) {
+      try {
+        const keys = await redisClient.keys(`${CIRCUIT_BREAKER_PREFIX}*`);
+        for (const key of keys) {
+          const shortKey = key.replace(CIRCUIT_BREAKER_PREFIX, '');
+          const count = parseInt(await redisClient.get(key)) || 0;
+          const ttl = await redisClient.ttl(key);
+          stats[shortKey] = {
+            failures: count,
+            threshold: this.threshold,
+            willTripAt: Math.max(0, this.threshold - count),
+            ttlSeconds: ttl,
+          };
+        }
+      } catch (error) {
+        log.error('Failed to get Redis stats, using local', { error: error.message });
+        // Fall back to local stats
+        for (const [key, count] of this.localFailureCount.entries()) {
+          stats[key] = {
+            failures: count,
+            threshold: this.threshold,
+            willTripAt: Math.max(0, this.threshold - count),
+          };
+        }
+      }
+    } else {
+      // In-memory stats
+      for (const [key, count] of this.localFailureCount.entries()) {
+        stats[key] = {
+          failures: count,
+          threshold: this.threshold,
+          willTripAt: Math.max(0, this.threshold - count),
+        };
+      }
+    }
+
     return stats;
   }
 }

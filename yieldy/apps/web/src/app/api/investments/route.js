@@ -6,13 +6,21 @@ import { authMiddleware } from "@/app/api/middleware/auth";
 import { auditLog, AUDIT_ACTIONS, getIPFromRequest, getRequestIDFromRequest } from "@/app/api/utils/auditLogger";
 import { checkEmergencyPause, circuitBreaker } from "@/app/api/utils/circuitBreaker";
 
-// ADD: helper to compute available funds
-async function getAvailableAgentFunds() {
+// Ensure tables exist
+async function ensureTables() {
   try {
     await sql(
       `CREATE TABLE IF NOT EXISTS agent_fund_transactions (id SERIAL PRIMARY KEY, amount NUMERIC(20,2) NOT NULL, type VARCHAR(20) NOT NULL, note TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`,
     );
   } catch (e) {}
+}
+
+/**
+ * Get available agent funds (for read-only checks)
+ * NOTE: For investment creation, use createInvestmentAtomic() instead
+ */
+async function getAvailableAgentFunds() {
+  await ensureTables();
   const [totals, investedRows] = await sql.transaction((txn) => [
     txn`SELECT COALESCE(SUM(CASE WHEN type='deposit' THEN amount WHEN type='adjustment' THEN amount WHEN type='withdrawal' THEN -amount ELSE 0 END),0) AS total_funds FROM agent_fund_transactions`,
     txn`SELECT COALESCE(SUM(amount),0) AS invested FROM investments WHERE status IN ('pending','confirmed')`,
@@ -20,6 +28,77 @@ async function getAvailableAgentFunds() {
   const totalFunds = parseFloat(totals[0]?.total_funds || 0);
   const invested = parseFloat(investedRows[0]?.invested || 0);
   return Math.max(0, totalFunds - invested);
+}
+
+/**
+ * Create investment with atomic fund validation
+ * CRITICAL: Uses transaction to prevent TOCTOU race conditions
+ *
+ * @param {object} investmentData - Investment details
+ * @param {object} opportunity - Validated opportunity record
+ * @returns {Promise<{success: boolean, investment?: object, error?: string}>}
+ */
+async function createInvestmentAtomic(investmentData, opportunity) {
+  const { opportunity_id, amount, blockchain, transaction_hash, expected_apy } = investmentData;
+  const amt = parseFloat(amount);
+
+  try {
+    // Use transaction with serializable isolation for consistency
+    const result = await sql.transaction(async (txn) => {
+      // 1. Lock and calculate available funds within transaction
+      // Using FOR UPDATE prevents concurrent modifications
+      const totals = await txn`
+        SELECT COALESCE(SUM(CASE
+          WHEN type='deposit' THEN amount
+          WHEN type='adjustment' THEN amount
+          WHEN type='withdrawal' THEN -amount
+          ELSE 0 END),0) AS total_funds
+        FROM agent_fund_transactions
+        FOR UPDATE
+      `;
+
+      const investedRows = await txn`
+        SELECT COALESCE(SUM(amount),0) AS invested
+        FROM investments
+        WHERE status IN ('pending','confirmed')
+        FOR UPDATE
+      `;
+
+      const totalFunds = parseFloat(totals[0]?.total_funds || 0);
+      const invested = parseFloat(investedRows[0]?.invested || 0);
+      const available = Math.max(0, totalFunds - invested);
+
+      // 2. Check funds within transaction (atomically)
+      if (amt > available) {
+        throw new Error(`INSUFFICIENT_FUNDS:${available}`);
+      }
+
+      // 3. Create investment (still within transaction)
+      const inserted = await txn`
+        INSERT INTO investments (
+          opportunity_id, amount, blockchain, transaction_hash, expected_apy, status
+        ) VALUES (
+          ${opportunity_id}, ${amt}, ${blockchain}, ${transaction_hash || null},
+          ${expected_apy || opportunity.apy}, 'pending'
+        ) RETURNING *
+      `;
+
+      return inserted[0];
+    });
+
+    return { success: true, investment: result };
+  } catch (error) {
+    // Handle insufficient funds error specifically
+    if (error.message.startsWith('INSUFFICIENT_FUNDS:')) {
+      const available = error.message.split(':')[1];
+      return {
+        success: false,
+        error: `Insufficient available agent funds. Available: ${available}`,
+        code: 'INSUFFICIENT_FUNDS'
+      };
+    }
+    throw error; // Re-throw other errors
+  }
 }
 
 // Get all investments with filtering
@@ -104,7 +183,6 @@ export async function POST(request) {
       expected_apy,
     } = request.validated;
 
-    // Validation already done by middleware, these checks are redundant but kept for safety
     const amt = parseFloat(amount);
 
     // Verify the opportunity exists and is active
@@ -118,30 +196,29 @@ export async function POST(request) {
       );
     }
 
-    // NEW: enforce agent funds availability
-    const available = await getAvailableAgentFunds();
-    if (amt > available) {
+    // CRITICAL: Use atomic transaction to prevent race conditions
+    // This ensures fund check and investment creation happen atomically
+    const investmentResult = await createInvestmentAtomic(
+      { opportunity_id, amount: amt, blockchain, transaction_hash, expected_apy },
+      opportunity[0]
+    );
+
+    if (!investmentResult.success) {
+      // Handle insufficient funds error
       return Response.json(
-        { success: false, error: "Insufficient available agent funds" },
+        { success: false, error: investmentResult.error, code: investmentResult.code },
         { status: 400 },
       );
     }
 
-    const result = await sql`
-      INSERT INTO investments (
-        opportunity_id, amount, blockchain, transaction_hash, expected_apy, status
-      ) VALUES (
-        ${opportunity_id}, ${amt}, ${blockchain}, ${transaction_hash || null}, 
-        ${expected_apy || opportunity[0].apy}, 'pending'
-      ) RETURNING *
-    `;
+    const investment = investmentResult.investment;
 
     // Audit log - investment created
     await auditLog({
       user_id: request.user?.id || 'system',
       action: AUDIT_ACTIONS.INVESTMENT_CREATED,
       resource_type: 'investment',
-      resource_id: result[0].id.toString(),
+      resource_id: investment.id.toString(),
       amount: amt,
       metadata: {
         opportunity_id,
@@ -154,7 +231,7 @@ export async function POST(request) {
       success: true,
     });
 
-    return Response.json({ success: true, investment: result[0] });
+    return Response.json({ success: true, investment });
   } catch (error) {
     console.error("Error creating investment:", error);
 

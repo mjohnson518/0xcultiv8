@@ -10,8 +10,8 @@ import { agentMemory } from '../memory/memory-manager.js';
 import { safetyController } from '../safety/safety-controller.js';
 import { checkPaymentOrCredits } from '../../middleware/x402Payment.js';
 
-// x402 pricing for this endpoint
-const ENDPOINT_PRICE = 0.50; // $0.50 USD
+// x402 pricing for this endpoint (optimized for revenue)
+const ENDPOINT_PRICE = 1.00; // $1.00 USD (increased from $0.50)
 
 /**
  * Agent Execution Endpoint

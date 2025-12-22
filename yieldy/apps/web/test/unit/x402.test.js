@@ -55,15 +55,16 @@ const mockSqlResults = {
 };
 
 // =============================================================================
-// Tier Discount Tests
+// Tier Discount Tests (Revenue Optimized)
 // =============================================================================
 
 describe('x402 Tier Discounts', () => {
+  // Revenue-optimized discounts (reduced from original)
   const TIER_DISCOUNTS = {
     community: 0,
-    pro: 0.20,
-    institutional: 0.40,
-    enterprise: 0.50,
+    pro: 0.10,        // Reduced from 20%
+    institutional: 0.20,  // Reduced from 40%
+    enterprise: 0.30,    // Reduced from 50%
   };
 
   function calculateDiscountedPrice(basePrice, tier) {
@@ -72,33 +73,33 @@ describe('x402 Tier Discounts', () => {
   }
 
   it('should apply no discount for community tier', () => {
-    const basePrice = 0.50;
+    const basePrice = 1.00;
     const result = calculateDiscountedPrice(basePrice, 'community');
-    assert.strictEqual(result, 0.50);
+    assert.strictEqual(result, 1.00);
   });
 
-  it('should apply 20% discount for pro tier', () => {
-    const basePrice = 0.50;
+  it('should apply 10% discount for pro tier', () => {
+    const basePrice = 1.00;
     const result = calculateDiscountedPrice(basePrice, 'pro');
-    assert.strictEqual(result, 0.40);
+    assert.strictEqual(result, 0.90);
   });
 
-  it('should apply 40% discount for institutional tier', () => {
-    const basePrice = 0.50;
+  it('should apply 20% discount for institutional tier', () => {
+    const basePrice = 1.00;
     const result = calculateDiscountedPrice(basePrice, 'institutional');
-    assert.strictEqual(result, 0.30);
+    assert.strictEqual(result, 0.80);
   });
 
-  it('should apply 50% discount for enterprise tier', () => {
-    const basePrice = 0.50;
+  it('should apply 30% discount for enterprise tier', () => {
+    const basePrice = 1.00;
     const result = calculateDiscountedPrice(basePrice, 'enterprise');
-    assert.strictEqual(result, 0.25);
+    assert.strictEqual(result, 0.70);
   });
 
   it('should handle unknown tier as community', () => {
-    const basePrice = 0.50;
+    const basePrice = 1.00;
     const result = calculateDiscountedPrice(basePrice, 'unknown');
-    assert.strictEqual(result, 0.50);
+    assert.strictEqual(result, 1.00);
   });
 });
 
@@ -134,37 +135,37 @@ describe('x402 Response Format', () => {
   }
 
   it('should format 402 response correctly for agent run endpoint', () => {
-    const response = create402ResponseBody('/api/agent/run', 0.50, 'AI agent execution');
+    const response = create402ResponseBody('/api/agent/run', 1.00, 'AI agent execution');
 
     assert.strictEqual(response.error, 'Payment Required');
-    assert.strictEqual(response.price.usd, 0.50);
-    assert.strictEqual(response.price.usdc, 500000); // 0.50 * 1e6
+    assert.strictEqual(response.price.usd, 1.00);
+    assert.strictEqual(response.price.usdc, 1000000); // 1.00 * 1e6
     assert.strictEqual(response.paymentRequirements[0].scheme, 'exact');
     assert.strictEqual(response.paymentRequirements[0].network, 'eip155:8453');
   });
 
   it('should format 402 response correctly for agent scan endpoint', () => {
-    const response = create402ResponseBody('/api/agent/scan', 0.10, 'DeFi opportunity scanning');
+    const response = create402ResponseBody('/api/agent/scan', 0.15, 'DeFi opportunity scanning');
 
-    assert.strictEqual(response.price.usd, 0.10);
-    assert.strictEqual(response.price.usdc, 100000); // 0.10 * 1e6
+    assert.strictEqual(response.price.usd, 0.15);
+    assert.strictEqual(response.price.usdc, 150000); // 0.15 * 1e6
   });
 
   it('should include correct USDC asset address for Base', () => {
-    const response = create402ResponseBody('/api/agent/run', 0.50);
+    const response = create402ResponseBody('/api/agent/run', 1.00);
 
     assert.ok(response.paymentRequirements[0].asset.includes(BASE_USDC_ADDRESS));
   });
 
   it('should apply tier discount to response price', () => {
-    const basePrice = 0.50;
-    const proDiscount = 0.20;
+    const basePrice = 1.00;
+    const proDiscount = 0.10;  // New pro discount
     const discountedPrice = basePrice * (1 - proDiscount);
 
     const response = create402ResponseBody('/api/agent/run', discountedPrice);
 
-    assert.strictEqual(response.price.usd, 0.40);
-    assert.strictEqual(response.price.usdc, 400000);
+    assert.strictEqual(response.price.usd, 0.90);
+    assert.strictEqual(response.price.usdc, 900000);
   });
 });
 
@@ -236,29 +237,30 @@ describe('Payment Header Detection', () => {
 });
 
 // =============================================================================
-// Endpoint Pricing Tests
+// Endpoint Pricing Tests (Revenue Optimized)
 // =============================================================================
 
 describe('Endpoint Pricing', () => {
+  // Revenue-optimized pricing
   const ENDPOINT_PRICES = {
-    '/api/agent/run': 0.50,
-    '/api/agent/scan': 0.10,
+    '/api/agent/run': 1.00,   // Increased from $0.50
+    '/api/agent/scan': 0.15,  // Increased from $0.10
   };
 
-  it('should price agent run at $0.50', () => {
-    assert.strictEqual(ENDPOINT_PRICES['/api/agent/run'], 0.50);
+  it('should price agent run at $1.00', () => {
+    assert.strictEqual(ENDPOINT_PRICES['/api/agent/run'], 1.00);
   });
 
-  it('should price agent scan at $0.10', () => {
-    assert.strictEqual(ENDPOINT_PRICES['/api/agent/scan'], 0.10);
+  it('should price agent scan at $0.15', () => {
+    assert.strictEqual(ENDPOINT_PRICES['/api/agent/scan'], 0.15);
   });
 
   it('should calculate correct USDC amounts (6 decimals)', () => {
     const runUsdc = Math.round(ENDPOINT_PRICES['/api/agent/run'] * 1e6);
     const scanUsdc = Math.round(ENDPOINT_PRICES['/api/agent/scan'] * 1e6);
 
-    assert.strictEqual(runUsdc, 500000); // 0.50 USDC
-    assert.strictEqual(scanUsdc, 100000); // 0.10 USDC
+    assert.strictEqual(runUsdc, 1000000); // 1.00 USDC
+    assert.strictEqual(scanUsdc, 150000); // 0.15 USDC
   });
 });
 
@@ -286,27 +288,28 @@ describe('x402 Configuration', () => {
 });
 
 // =============================================================================
-// Credit Tier Allocation Tests
+// Credit Tier Allocation Tests (Revenue Optimized)
 // =============================================================================
 
 describe('Tier Credit Allocations', () => {
+  // Revenue-optimized credit allocations (reduced ~50%)
   const TIER_ALLOCATIONS = {
-    community: { run: 10, scan: 50 },
-    pro: { run: 100, scan: 500 },
-    institutional: { run: 500, scan: 2000 },
-    enterprise: { run: -1, scan: -1 }, // -1 = unlimited
+    community: { run: 5, scan: 20 },       // Reduced from 10/50
+    pro: { run: 50, scan: 200 },           // Reduced from 100/500
+    institutional: { run: 200, scan: 750 }, // Reduced from 500/2000
+    enterprise: { run: -1, scan: -1 },      // -1 = unlimited
   };
 
-  it('should allocate 10 run credits for community tier', () => {
-    assert.strictEqual(TIER_ALLOCATIONS.community.run, 10);
+  it('should allocate 5 run credits for community tier', () => {
+    assert.strictEqual(TIER_ALLOCATIONS.community.run, 5);
   });
 
-  it('should allocate 50 scan credits for community tier', () => {
-    assert.strictEqual(TIER_ALLOCATIONS.community.scan, 50);
+  it('should allocate 20 scan credits for community tier', () => {
+    assert.strictEqual(TIER_ALLOCATIONS.community.scan, 20);
   });
 
-  it('should allocate 100 run credits for pro tier', () => {
-    assert.strictEqual(TIER_ALLOCATIONS.pro.run, 100);
+  it('should allocate 50 run credits for pro tier', () => {
+    assert.strictEqual(TIER_ALLOCATIONS.pro.run, 50);
   });
 
   it('should allocate unlimited credits for enterprise tier', () => {
@@ -403,7 +406,118 @@ describe('Payment Flow Decision Logic', () => {
 });
 
 // =============================================================================
+// Execution Fee Tests
+// =============================================================================
+
+describe('Execution Fee Calculation', () => {
+  const FEE_CONFIG = {
+    feePercent: 0.0010,  // 0.10%
+    feeCap: 25.00,       // $25 maximum
+  };
+
+  function calculateExecutionFee(transactionValueUsd) {
+    if (transactionValueUsd <= 0) {
+      return { feeUsd: 0, capped: false };
+    }
+
+    const rawFee = transactionValueUsd * FEE_CONFIG.feePercent;
+    const capped = rawFee > FEE_CONFIG.feeCap;
+    const feeUsd = capped ? FEE_CONFIG.feeCap : rawFee;
+
+    return {
+      feeUsd: Math.round(feeUsd * 100) / 100,
+      capped,
+    };
+  }
+
+  it('should calculate 0.10% fee on small transaction', () => {
+    const result = calculateExecutionFee(1000);  // $1,000 transaction
+
+    assert.strictEqual(result.feeUsd, 1.00);  // $1.00 fee
+    assert.strictEqual(result.capped, false);
+  });
+
+  it('should calculate 0.10% fee on medium transaction', () => {
+    const result = calculateExecutionFee(5000);  // $5,000 transaction
+
+    assert.strictEqual(result.feeUsd, 5.00);  // $5.00 fee
+    assert.strictEqual(result.capped, false);
+  });
+
+  it('should cap fee at $25 for large transactions', () => {
+    const result = calculateExecutionFee(50000);  // $50,000 transaction
+
+    assert.strictEqual(result.feeUsd, 25.00);  // Capped at $25
+    assert.strictEqual(result.capped, true);
+  });
+
+  it('should cap fee at $25 for very large transactions', () => {
+    const result = calculateExecutionFee(1000000);  // $1M transaction
+
+    assert.strictEqual(result.feeUsd, 25.00);  // Still capped at $25
+    assert.strictEqual(result.capped, true);
+  });
+
+  it('should return zero fee for zero value', () => {
+    const result = calculateExecutionFee(0);
+
+    assert.strictEqual(result.feeUsd, 0);
+    assert.strictEqual(result.capped, false);
+  });
+
+  it('should return zero fee for negative value', () => {
+    const result = calculateExecutionFee(-100);
+
+    assert.strictEqual(result.feeUsd, 0);
+    assert.strictEqual(result.capped, false);
+  });
+});
+
+// =============================================================================
+// Credit Pack Tests
+// =============================================================================
+
+describe('Credit Pack Pricing', () => {
+  const CREDIT_PACKS = [
+    { name: 'Starter Pack', runs: 10, price: 9.00, discount: 10 },
+    { name: 'Growth Pack', runs: 50, price: 40.00, discount: 20 },
+    { name: 'Power Pack', runs: 100, price: 70.00, discount: 30 },
+  ];
+
+  const BASE_RUN_PRICE = 1.00;
+
+  it('should offer 10% discount on Starter Pack', () => {
+    const pack = CREDIT_PACKS[0];
+    const fullPrice = pack.runs * BASE_RUN_PRICE;
+    const expectedDiscount = fullPrice * (pack.discount / 100);
+
+    assert.strictEqual(fullPrice - pack.price, expectedDiscount);
+  });
+
+  it('should offer 20% discount on Growth Pack', () => {
+    const pack = CREDIT_PACKS[1];
+    const fullPrice = pack.runs * BASE_RUN_PRICE;
+    const expectedDiscount = fullPrice * (pack.discount / 100);
+
+    assert.strictEqual(fullPrice - pack.price, expectedDiscount);
+  });
+
+  it('should offer 30% discount on Power Pack', () => {
+    const pack = CREDIT_PACKS[2];
+    const fullPrice = pack.runs * BASE_RUN_PRICE;
+    const expectedDiscount = fullPrice * (pack.discount / 100);
+
+    assert.strictEqual(fullPrice - pack.price, expectedDiscount);
+  });
+
+  it('should have increasing discounts for larger packs', () => {
+    assert.ok(CREDIT_PACKS[1].discount > CREDIT_PACKS[0].discount);
+    assert.ok(CREDIT_PACKS[2].discount > CREDIT_PACKS[1].discount);
+  });
+});
+
+// =============================================================================
 // Run Tests
 // =============================================================================
 
-console.log('\n🔐 Running x402 Payment Protocol Tests\n');
+console.log('\n🔐 Running x402 Payment Protocol Tests (Revenue Optimized)\n');

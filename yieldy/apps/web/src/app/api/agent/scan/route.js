@@ -13,8 +13,8 @@ import { checkPaymentOrCredits } from '../../middleware/x402Payment.js';
 import { rateLimitMiddleware } from '../../middleware/rateLimit.js';
 // Note: RiskEngine is dynamically imported only when needed (not in demo mode)
 
-// x402 pricing for this endpoint
-const ENDPOINT_PRICE = 0.10; // $0.10 USD
+// x402 pricing for this endpoint (optimized for revenue)
+const ENDPOINT_PRICE = 0.15; // $0.15 USD (increased from $0.10)
 
 // Protocol metadata for risk calculation
 const PROTOCOL_METADATA = {

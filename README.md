@@ -114,11 +114,12 @@ X402_NETWORK=eip155:8453     # Base mainnet
 | `/api/health` | GET | System health check | Free |
 | `/api/auth/nonce` | GET | Get authentication nonce | Free |
 | `/api/auth/token` | POST | Exchange signature for JWT | Free |
-| `/api/agent/run` | POST | Execute agent | $0.50 |
-| `/api/agent/scan` | POST | Scan opportunities | $0.10 |
+| `/api/agent/run` | POST | Execute agent | $1.00 |
+| `/api/agent/scan` | POST | Scan opportunities | $0.15 |
 | `/api/credits` | GET | Get user credit balance | Free |
+| `/api/credits/packs` | GET/POST | List/purchase credit packs | Free/Varies |
 | `/api/execute/preview` | POST | Preview transaction | Free |
-| `/api/execute/submit` | POST | Submit transaction | Free |
+| `/api/execute/submit` | POST | Submit transaction | 0.10% fee |
 | `/api/authorization` | GET | Get user authorization status | Free |
 | `/api/emergency/pause` | POST | Emergency pause (admin) | Free |
 
@@ -143,10 +144,24 @@ The platform uses [x402](https://x402.org) for HTTP-native payments on Base (USD
 
 | Tier | Agent Run | Agent Scan | Payment Discount |
 |------|-----------|------------|------------------|
-| Community | 10 | 50 | 0% |
-| Pro | 100 | 500 | 20% |
-| Institutional | 500 | 2,000 | 40% |
-| Enterprise | Unlimited | Unlimited | 50% |
+| Community | 5 | 20 | 0% |
+| Pro | 50 | 200 | 10% |
+| Institutional | 200 | 750 | 20% |
+| Enterprise | Unlimited | Unlimited | 30% |
+
+### Credit Packs
+
+| Pack | Credits | Price | Savings |
+|------|---------|-------|---------|
+| Starter | 10 runs | $9 | 10% |
+| Growth | 50 runs | $40 | 20% |
+| Power | 100 runs | $70 | 30% |
+
+### Execution Fees
+
+- **0.10%** of transaction value (capped at $25)
+- Covers MEV protection and gas optimization
+- Waived for Enterprise tier
 
 ### How It Works
 
@@ -154,6 +169,7 @@ The platform uses [x402](https://x402.org) for HTTP-native payments on Base (USD
 2. **Users without credits** receive a `402 Payment Required` response
 3. **Pay with USDC** on Base via the `X-PAYMENT` header
 4. **Tier discounts** apply to per-request payments
+5. **Credit packs** offer volume discounts for frequent users
 
 ## Development
 

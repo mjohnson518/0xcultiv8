@@ -30,12 +30,12 @@ const X402_CONFIG = {
 // USDC contract address on Base
 const BASE_USDC_ADDRESS = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
 
-// Tier discount percentages
+// Tier discount percentages (optimized for revenue)
 const TIER_DISCOUNTS = {
   community: 0,
-  pro: 0.20,
-  institutional: 0.40,
-  enterprise: 0.50,
+  pro: 0.10,        // Reduced from 20%
+  institutional: 0.20,  // Reduced from 40%
+  enterprise: 0.30,    // Reduced from 50%
 };
 
 // Credit types per endpoint

@@ -7,7 +7,7 @@ import {
   RetroFeeTable,
   RetroFeeBreakdown,
 } from '../Retro';
-import { STATUS_ICONS } from '../../utils/asciiArt';
+import { STATUS_ICONS, createPercentageBar } from '../../utils/asciiArt';
 import { useDarkMode } from '../../hooks/useDarkMode';
 import { 
   calculateMonthlyManagementFee,

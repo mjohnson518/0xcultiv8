@@ -10,25 +10,65 @@ export function DepositInterface({ opportunities, walletBalance, onDeposit, conn
   const handleDeposit = async () => {
     if (!selectedOpportunity || !depositAmount || !connectedWallet) return;
 
+    const amount = parseFloat(depositAmount);
+    if (isNaN(amount) || amount <= 0) {
+      alert('Please enter a valid deposit amount');
+      return;
+    }
+
     setIsDepositing(true);
     try {
-      // Simulate transaction
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      if (onDeposit) {
-        onDeposit({
-          opportunity: selectedOpportunity,
-          amount: depositAmount,
+      // Call the deposit API
+      const response = await fetch('/api/execute/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'deposit',
+          protocol: selectedOpportunity.protocol_id || selectedOpportunity.protocol_name?.toLowerCase(),
+          blockchain: selectedOpportunity.blockchain,
+          amount: amount,
           token: selectedToken,
-          wallet: connectedWallet
+          userAddress: connectedWallet,
+        }),
+      });
+
+      const preview = await response.json();
+
+      if (!preview.success) {
+        throw new Error(preview.error || 'Failed to preview transaction');
+      }
+
+      // Show confirmation with gas estimate
+      const confirmed = confirm(
+        `Deposit ${amount} ${selectedToken} to ${selectedOpportunity.protocol_name}?\n\n` +
+        `Estimated Gas: ${preview.estimatedGas || 'Unknown'}\n` +
+        `Expected APY: ${selectedOpportunity.apy}%\n\n` +
+        'Click OK to proceed with the deposit.'
+      );
+
+      if (!confirmed) {
+        setIsDepositing(false);
+        return;
+      }
+
+      // Call the actual deposit callback which should handle blockchain interaction
+      if (onDeposit) {
+        await onDeposit({
+          opportunity: selectedOpportunity,
+          amount: amount,
+          token: selectedToken,
+          wallet: connectedWallet,
+          preview: preview,
         });
       }
-      
-      // Reset form
+
+      // Reset form on success
       setDepositAmount('');
       setSelectedOpportunity(null);
+      alert(`Successfully deposited ${amount} ${selectedToken} to ${selectedOpportunity.protocol_name}`);
     } catch (error) {
       console.error('Deposit failed:', error);
+      alert(`Deposit failed: ${error.message}`);
     } finally {
       setIsDepositing(false);
     }

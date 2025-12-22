@@ -30,6 +30,9 @@ export function RetroSettings({
   onRevoke,
   onAuthorize,
   onUpgradeTier,
+  isLoading,
+  txStatus,
+  authError,
 }) {
   const [formData, setFormData] = useState({
     autoInvest: config?.auto_invest_enabled || false,
@@ -342,9 +345,9 @@ export function RetroSettings({
                 <RetroButton
                   size="small"
                   onClick={onUpgradeTier}
-                  disabled={!isConnected}
+                  disabled={isLoading}
                 >
-                  [Ξ UPGRADE TIER]
+                  {isLoading ? '[...LOADING]' : '[Ξ UPGRADE TIER]'}
                 </RetroButton>
               </div>
               

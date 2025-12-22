@@ -140,11 +140,10 @@ jobs:
           REDIS_URL: redis://localhost:6379
 
       - name: Run integration tests
-        run: cd yieldy/apps/web && npm run test:integration || true
+        run: cd yieldy/apps/web && npm run test:integration
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/cultiv8_test
           REDIS_URL: redis://localhost:6379
-        continue-on-error: true
 
   # =============================================================================
   # Build Check
@@ -286,5 +285,11 @@ jobs:
       - name: Fail if critical jobs failed
         if: |
           needs.contract-tests.result == 'failure' ||
+          needs.web-tests.result == 'failure' ||
           needs.build.result == 'failure'
-        run: exit 1
+        run: |
+          echo "Critical CI jobs failed!"
+          echo "Contract Tests: ${{ needs.contract-tests.result }}"
+          echo "Web Tests: ${{ needs.web-tests.result }}"
+          echo "Build: ${{ needs.build.result }}"
+          exit 1

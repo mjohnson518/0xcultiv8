@@ -13,9 +13,13 @@ let redisInitialized = false;
 /**
  * Initialize Redis client for distributed circuit breaker
  * Falls back to in-memory storage if Redis is not available
+ *
+ * PRODUCTION REQUIREMENT: REDIS_URL must be set in production
  */
 async function initRedis() {
   if (redisInitialized) return redisClient;
+
+  const isProduction = process.env.NODE_ENV === 'production';
 
   if (process.env.REDIS_URL) {
     try {
@@ -27,13 +31,37 @@ async function initRedis() {
       await redisClient.connect();
       log.info('Circuit breaker: Using Redis for distributed failure tracking');
     } catch (error) {
-      log.warn('Circuit breaker: Redis connection failed, using in-memory fallback', {
-        error: error.message,
-      });
+      if (isProduction) {
+        log.error('CRITICAL: Circuit breaker Redis connection failed in production', {
+          error: error.message,
+        });
+        // In production, we should not silently fall back to in-memory
+        // Log critical alert but continue with fallback to avoid complete failure
+        await alertManager?.send({
+          title: 'Redis Connection Failed',
+          message: 'Circuit breaker falling back to in-memory storage',
+          severity: SEVERITY.CRITICAL,
+          type: ALERT_TYPES.INFRASTRUCTURE,
+        }).catch(() => {});
+      } else {
+        log.warn('Circuit breaker: Redis connection failed, using in-memory fallback', {
+          error: error.message,
+        });
+      }
       redisClient = null;
     }
   } else {
-    log.warn('Circuit breaker: REDIS_URL not set, using in-memory storage (not suitable for production)');
+    if (isProduction) {
+      log.error('CRITICAL: REDIS_URL not set in production - circuit breaker will not work across instances');
+      // Alert on missing Redis in production
+      console.error('================================================================================');
+      console.error('PRODUCTION WARNING: REDIS_URL not configured');
+      console.error('Circuit breaker will use in-memory storage - NOT SUITABLE FOR PRODUCTION');
+      console.error('Set REDIS_URL environment variable to enable distributed circuit breaker');
+      console.error('================================================================================');
+    } else {
+      log.warn('Circuit breaker: REDIS_URL not set, using in-memory storage (development mode)');
+    }
   }
 
   redisInitialized = true;

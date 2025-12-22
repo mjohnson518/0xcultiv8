@@ -71,5 +71,20 @@ interface IEIP8004Agent {
         external
         view
         returns (bool);
+
+    /**
+     * @notice Record spending from authorized vault (for EIP-7702 delegated execution)
+     * @dev Only callable by the authorized vault contract
+     * @param user User whose spending to record
+     * @param protocol Target protocol (for event logging)
+     * @param amount Amount spent
+     * @param strategyHash Hash of the executed strategy data
+     */
+    function recordSpending(
+        address user,
+        address protocol,
+        uint256 amount,
+        bytes32 strategyHash
+    ) external;
 }
 

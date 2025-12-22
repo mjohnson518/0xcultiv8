@@ -1,6 +1,6 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
-const { time } = require("@nomicfoundation/hardhat-network-helpers");
+const { time, mine } = require("@nomicfoundation/hardhat-network-helpers");
 
 describe("Cultiv8Agent - EIP-8004 Compliance", function () {
   let agent, owner, user, unauthorizedAgent, protocol;
@@ -207,8 +207,8 @@ describe("Cultiv8Agent - EIP-8004 Compliance", function () {
       let auth = await agent.getAuthorization(user.address);
       expect(auth.dailySpent).to.equal(toUSDC(1000));
 
-      // Fast forward 24 hours
-      await time.increase(24 * 60 * 60);
+      // Mine 7200+ blocks to advance to next "day" (BLOCKS_PER_DAY = 7200)
+      await mine(7201);
 
       // Execute another transaction - should reset daily spent
       await agent.connect(owner).executeStrategy(

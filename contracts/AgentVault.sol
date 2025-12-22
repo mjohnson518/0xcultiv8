@@ -91,6 +91,7 @@ contract AgentVault is IEIP7702Vault, Ownable, ReentrancyGuard {
      * @dev Allows authorized agent to execute strategies on behalf of users
      * SECURITY: Verifies per-user authorization via Cultiv8Agent contract
      * SECURITY: Validates calldata against whitelisted function selectors
+     * SECURITY: Records spending in Cultiv8Agent for daily limit enforcement
      * @param user User whose funds/authorization are being used
      * @param target Target contract to call
      * @param amount Amount being transacted (for limit tracking)
@@ -117,14 +118,20 @@ contract AgentVault is IEIP7702Vault, Ownable, ReentrancyGuard {
         require(auth.active, "User has not authorized agent");
         require(auth.agent == msg.sender, "Caller not authorized for this user");
 
-        // SECURITY: Verify amount is within user's limits
+        // SECURITY: Verify amount is within user's limits (pre-check before recording)
         require(cultiv8Agent.canExecute(user, amount), "Amount exceeds user limits");
 
         // SECURITY: Verify user has sufficient balance in this vault
         require(balances[user] >= amount, "Insufficient user balance");
 
+        // Execute the delegated call
         (bool success, bytes memory returnData) = target.call(data);
         require(success, "Delegated call failed");
+
+        // SECURITY: Record spending in Cultiv8Agent to enforce daily limits
+        // This MUST happen after successful execution to prevent limit bypass
+        bytes32 strategyHash = keccak256(data);
+        cultiv8Agent.recordSpending(user, target, amount, strategyHash);
 
         emit Delegated(user, target, data);
         return returnData;

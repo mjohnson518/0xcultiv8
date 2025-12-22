@@ -133,3 +133,47 @@ export function areContractsDeployed(chainId) {
     addresses.agentVault !== zeroAddress
   );
 }
+
+/**
+ * Validate protocol addresses are set via environment variables in production
+ * @param {number} chainId - The chain ID
+ * @returns {object} Validation result with warnings
+ */
+export function validateProductionAddresses(chainId) {
+  const isProduction = process.env.NODE_ENV === 'production';
+  const warnings = [];
+
+  if (!isProduction) {
+    return { valid: true, warnings: [] };
+  }
+
+  const chain = CONTRACT_ADDRESSES[chainId];
+  if (!chain) {
+    return { valid: false, warnings: [`Unsupported chain: ${chainId}`] };
+  }
+
+  // Check Cultiv8 contract addresses
+  const zeroAddress = '0x0000000000000000000000000000000000000000';
+  if (chain.cultiv8Agent === zeroAddress) {
+    warnings.push('CRITICAL: Cultiv8Agent address not set for production');
+  }
+  if (chain.agentVault === zeroAddress) {
+    warnings.push('CRITICAL: AgentVault address not set for production');
+  }
+
+  // Check if using default protocol addresses (should be overridden in production)
+  const defaultChain = DEFAULT_ADDRESSES[chainId === 1 ? 'mainnet' : chainId === 8453 ? 'base' : null];
+  if (defaultChain) {
+    if (chain.usdc === defaultChain.usdc && !process.env.NEXT_PUBLIC_USDC_MAINNET && !process.env.NEXT_PUBLIC_USDC_BASE) {
+      warnings.push('WARNING: Using default USDC address - consider setting via env var for quick updates');
+    }
+    if (chain.protocols?.aaveV3Pool === defaultChain.aaveV3Pool) {
+      warnings.push('WARNING: Using default Aave V3 Pool address - consider setting via env var');
+    }
+  }
+
+  return {
+    valid: warnings.filter(w => w.startsWith('CRITICAL')).length === 0,
+    warnings,
+  };
+}

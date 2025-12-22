@@ -100,40 +100,74 @@ export async function POST(request) {
       ));
     }
 
-    // Execute transaction (MEV protection applied in adapter if chainId === 1)
-    let result;
-    if (action === 'deposit') {
-      result = await adapter.executeDeposit(agentWallet, amountBN, { mevRisk });
-    } else {
-      result = await adapter.executeWithdraw(agentWallet, amountBN, { mevRisk });
-    }
+    // CRITICAL: Create pending investment BEFORE blockchain execution
+    // This ensures we have a record even if the blockchain tx succeeds but DB fails later
+    let pendingInvestmentId = null;
+    let opportunity = null;
 
-    // Add MEV assessment to result
-    result.mevRisk = mevRisk;
-
-    // Record in database
     if (action === 'deposit') {
-      // Find or create opportunity record
-      const opportunity = await sql`
+      // Find opportunity record
+      const opportunityResult = await sql`
         SELECT id FROM cultiv8_opportunities
         WHERE protocol_name = ${protocol}
         AND blockchain = ${chain}
         LIMIT 1
       `;
+      opportunity = opportunityResult?.[0];
 
-      if (opportunity && opportunity.length > 0) {
-        await sql`
+      if (opportunity) {
+        // Create pending investment record FIRST
+        const pendingResult = await sql`
           INSERT INTO investments (
-            opportunity_id, amount, blockchain, transaction_hash, status
+            opportunity_id, amount, blockchain, status, transaction_hash
           ) VALUES (
-            ${opportunity[0].id},
+            ${opportunity.id},
             ${Number(amountBN) / 1e6},
             ${chain},
-            ${result.receipts?.[result.receipts.length - 1]?.hash || result.hash},
-            'confirmed'
-          )
+            'pending',
+            NULL
+          ) RETURNING id
         `;
+        pendingInvestmentId = pendingResult?.[0]?.id;
+        logger.info('Created pending investment record', { id: pendingInvestmentId });
       }
+    }
+
+    // Execute transaction (MEV protection applied in adapter if chainId === 1)
+    let result;
+    try {
+      if (action === 'deposit') {
+        result = await adapter.executeDeposit(agentWallet, amountBN, { mevRisk });
+      } else {
+        result = await adapter.executeWithdraw(agentWallet, amountBN, { mevRisk });
+      }
+    } catch (txError) {
+      // If blockchain tx fails and we have a pending record, mark it as failed
+      if (pendingInvestmentId) {
+        await sql`
+          UPDATE investments
+          SET status = 'failed',
+              updated_at = NOW()
+          WHERE id = ${pendingInvestmentId}
+        `.catch(dbErr => logger.error('Failed to update investment status', { error: dbErr.message }));
+      }
+      throw txError;
+    }
+
+    // Add MEV assessment to result
+    result.mevRisk = mevRisk;
+
+    // Update investment record to confirmed with transaction hash
+    if (action === 'deposit' && pendingInvestmentId) {
+      const txHash = result.receipts?.[result.receipts.length - 1]?.hash || result.hash;
+      await sql`
+        UPDATE investments
+        SET status = 'confirmed',
+            transaction_hash = ${txHash},
+            updated_at = NOW()
+        WHERE id = ${pendingInvestmentId}
+      `;
+      logger.info('Investment confirmed', { id: pendingInvestmentId, txHash });
     }
 
     // Audit log

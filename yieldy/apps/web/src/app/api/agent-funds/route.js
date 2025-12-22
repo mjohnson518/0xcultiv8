@@ -92,25 +92,57 @@ export async function POST(request) {
       return Response.json({ success: false, error: "Invalid type" }, { status: 400 });
     }
 
-    // If withdrawal, ensure sufficient available balance
-    if (type === 'withdrawal') {
-      const [totals, investedRows] = await sql.transaction((txn) => [
-        txn`SELECT COALESCE(SUM(CASE WHEN type='deposit' THEN amount WHEN type='adjustment' THEN amount WHEN type='withdrawal' THEN -amount ELSE 0 END),0) AS total_funds FROM agent_fund_transactions`,
-        txn`SELECT COALESCE(SUM(amount),0) AS invested FROM investments WHERE status IN ('pending','confirmed')`,
-      ]);
-      const totalFunds = parseFloat(totals[0]?.total_funds || 0);
-      const invested = parseFloat(investedRows[0]?.invested || 0);
-      const available = Math.max(0, totalFunds - invested);
-      if (amt > available) {
-        return Response.json({ success: false, error: "Withdrawal exceeds available balance" }, { status: 400 });
-      }
-    }
+    // CRITICAL: Use atomic transaction for all fund operations to prevent race conditions
+    // This prevents TOCTOU bugs where balance is checked but changes before insert
+    const inserted = await sql.transaction(async (txn) => {
+      // If withdrawal, ensure sufficient available balance WITH LOCK
+      if (type === 'withdrawal') {
+        // Use FOR UPDATE to lock rows and prevent concurrent modifications
+        const totals = await txn`
+          SELECT COALESCE(SUM(CASE
+            WHEN type='deposit' THEN amount
+            WHEN type='adjustment' THEN amount
+            WHEN type='withdrawal' THEN -amount
+            ELSE 0 END),0) AS total_funds
+          FROM agent_fund_transactions
+          FOR UPDATE
+        `;
+        const investedRows = await txn`
+          SELECT COALESCE(SUM(amount),0) AS invested
+          FROM investments
+          WHERE status IN ('pending','confirmed')
+          FOR UPDATE
+        `;
 
-    const inserted = await sql`
-      INSERT INTO agent_fund_transactions (amount, type, note)
-      VALUES (${amt}, ${type}, ${note || null})
-      RETURNING id, amount, type, note, created_at
-    `;
+        const totalFunds = parseFloat(totals[0]?.total_funds || 0);
+        const invested = parseFloat(investedRows[0]?.invested || 0);
+        const available = Math.max(0, totalFunds - invested);
+
+        if (amt > available) {
+          throw new Error(`INSUFFICIENT_FUNDS:${available}`);
+        }
+      }
+
+      // Insert within same transaction (atomically with the check)
+      const result = await txn`
+        INSERT INTO agent_fund_transactions (amount, type, note)
+        VALUES (${amt}, ${type}, ${note || null})
+        RETURNING id, amount, type, note, created_at
+      `;
+
+      return result;
+    }).catch(error => {
+      if (error.message.startsWith('INSUFFICIENT_FUNDS:')) {
+        const available = error.message.split(':')[1];
+        return { error: `Withdrawal exceeds available balance. Available: ${available}` };
+      }
+      throw error;
+    });
+
+    // Handle insufficient funds error
+    if (inserted.error) {
+      return Response.json({ success: false, error: inserted.error }, { status: 400 });
+    }
 
     // Audit log - fund operation
     const auditAction = type === 'deposit' ? AUDIT_ACTIONS.FUNDS_DEPOSITED :

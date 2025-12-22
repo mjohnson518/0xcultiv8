@@ -47,7 +47,26 @@ contract Cultiv8Agent is IEIP8004Agent, Ownable, ReentrancyGuard {
     /// @dev Using block numbers instead of timestamps prevents miner manipulation
     uint256 public constant BLOCKS_PER_DAY = 7200;
 
+    /// @notice Authorized vault that can record spending on behalf of users
+    /// @dev Required for EIP-7702 delegated execution flow
+    address public authorizedVault;
+
+    /// @notice Emitted when authorized vault is updated
+    event AuthorizedVaultUpdated(address indexed oldVault, address indexed newVault);
+
     constructor() Ownable(msg.sender) {}
+
+    /**
+     * @notice Set the authorized vault address
+     * @dev Only the vault can call recordSpending
+     * @param vault Address of the AgentVault contract
+     */
+    function setAuthorizedVault(address vault) external onlyOwner {
+        require(vault != address(0), "Invalid vault address");
+        address oldVault = authorizedVault;
+        authorizedVault = vault;
+        emit AuthorizedVaultUpdated(oldVault, vault);
+    }
     
     /**
      * @notice Authorize the Cultiv8 agent to execute strategies
@@ -236,6 +255,55 @@ contract Cultiv8Agent is IEIP8004Agent, Ownable, ReentrancyGuard {
         uint256 dailySpent = (currentDay > auth.lastResetDay) ? 0 : auth.dailySpent;
 
         return auth.dailyLimit > dailySpent ? auth.dailyLimit - dailySpent : 0;
+    }
+
+    /**
+     * @notice Record spending from authorized vault (for EIP-7702 delegated execution)
+     * @dev Only callable by the authorized vault contract
+     * @param user User whose spending to record
+     * @param protocol Target protocol (for event logging)
+     * @param amount Amount spent
+     * @param strategyHash Hash of the executed strategy data
+     */
+    function recordSpending(
+        address user,
+        address protocol,
+        uint256 amount,
+        bytes32 strategyHash
+    ) external nonReentrant {
+        require(!paused, "Contract is paused");
+        require(msg.sender == authorizedVault, "Only authorized vault");
+        require(authorizedVault != address(0), "Vault not configured");
+
+        AgentAuthorization storage auth = authorizations[user];
+
+        // Verify authorization is active
+        require(auth.active, "Agent not authorized");
+        require(amount > 0, "Amount must be positive");
+        require(amount <= auth.maxAmountPerTx, "Exceeds per-transaction limit");
+        require(whitelistedProtocols[protocol], "Protocol not whitelisted");
+
+        // Check and update daily limit using block numbers
+        uint256 currentDay = block.number / BLOCKS_PER_DAY;
+        if (currentDay > auth.lastResetDay) {
+            auth.dailySpent = 0;
+            auth.lastResetDay = currentDay;
+        }
+
+        require(auth.dailySpent + amount <= auth.dailyLimit, "Exceeds daily limit");
+        auth.dailySpent += amount;
+
+        // Record execution for transparency
+        executionHistory.push(ExecutionRecord({
+            user: user,
+            protocol: protocol,
+            amount: amount,
+            strategyHash: strategyHash,
+            timestamp: block.timestamp,
+            success: true
+        }));
+
+        emit AgentExecuted(user, protocol, amount, strategyHash, true);
     }
 }
 

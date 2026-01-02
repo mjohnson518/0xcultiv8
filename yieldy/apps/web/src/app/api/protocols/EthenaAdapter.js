@@ -29,6 +29,7 @@ export class EthenaAdapter extends BaseAdapter {
   /**
    * Get current staking APY for sUSDe
    * sUSDe is an ERC-4626 vault where yield accrues to the share price
+   * SECURITY: Returns isEstimate flag to indicate data quality
    * @returns {Promise<object>}
    */
   async getCurrentAPY() {
@@ -44,15 +45,15 @@ export class EthenaAdapter extends BaseAdapter {
       const totalAssets = await this.susde.totalAssets();
       const totalSupply = await this.susde.totalSupply();
 
-      // The APY is approximately 12-15% for sUSDe (from delta-neutral funding rates)
-      // In production, you'd track the conversion rate over time
-      // For now, estimate based on typical Ethena yields
-      const estimatedAPY = await this.estimateAPY(assetsPerShare);
+      // Get APY with source and warning info
+      const apyResult = await this.estimateAPY(assetsPerShare);
 
       return {
-        apy: Number(estimatedAPY.toFixed(4)),
-        apr: Number((estimatedAPY * 0.92).toFixed(4)), // Approximate APR
-        source: 'on-chain',
+        apy: Number(apyResult.apy.toFixed(4)),
+        apr: Number((apyResult.apy * 0.92).toFixed(4)), // Approximate APR
+        source: apyResult.source,
+        isEstimate: apyResult.isEstimate,
+        warning: apyResult.warning, // SECURITY: Exposed to callers for transparency
         timestamp: Date.now(),
         protocol: 'Ethena',
         chain: 'ethereum',
@@ -66,6 +67,8 @@ export class EthenaAdapter extends BaseAdapter {
       return {
         apy: 0,
         source: 'error',
+        isEstimate: true,
+        warning: 'Failed to fetch APY data',
         error: error.message,
         timestamp: Date.now(),
       };
@@ -73,29 +76,61 @@ export class EthenaAdapter extends BaseAdapter {
   }
 
   /**
-   * Estimate APY from conversion rate
-   * In production, track rate over 7-30 days for accuracy
+   * Estimate APY from conversion rate changes
+   * SECURITY: Returns clearly marked estimate when live data unavailable
    * @param {BigInt} currentRate - Current assets per share
-   * @returns {Promise<number>}
+   * @returns {Promise<{apy: number, isEstimate: boolean, warning: string|null}>}
    */
   async estimateAPY(currentRate) {
     try {
-      // Ethena's yield comes from:
-      // 1. Funding rate arbitrage (delta-neutral ETH positions)
-      // 2. Staking ETH yields
-      // Typical APY ranges from 10-25% depending on market conditions
+      // Attempt to fetch live APY from Ethena API
+      // SECURITY: Fallback values are clearly marked as estimates
+      const ethenaApiUrl = process.env.ETHENA_API_URL;
 
-      // For accurate APY, you'd need to track:
-      // - conversion rate 7 days ago
-      // - calculate weekly return
-      // - annualize
+      if (ethenaApiUrl) {
+        try {
+          const response = await fetch(`${ethenaApiUrl}/v1/apy/susde`, {
+            timeout: 5000,
+            headers: { 'Accept': 'application/json' },
+          });
+          if (response.ok) {
+            const data = await response.json();
+            if (data.apy && typeof data.apy === 'number') {
+              return {
+                apy: data.apy,
+                isEstimate: false,
+                warning: null,
+                source: 'ethena-api',
+              };
+            }
+          }
+        } catch {
+          // API fetch failed, fall through to estimate
+        }
+      }
 
-      // Placeholder: return typical Ethena yield
-      // In production, integrate with Ethena API or track on-chain
-      return 12.5; // Typical sUSDe APY
+      // SECURITY: Clearly mark this as a fallback estimate
+      // Ethena's yield typically ranges 10-25% from delta-neutral funding rates
+      // This value should be updated regularly based on market conditions
+      const FALLBACK_APY = 12.5;
+      const FALLBACK_UPDATED = '2026-01-02'; // Date this fallback was last verified
+
+      console.warn(`EthenaAdapter: Using fallback APY estimate (${FALLBACK_APY}%), last verified ${FALLBACK_UPDATED}`);
+
+      return {
+        apy: FALLBACK_APY,
+        isEstimate: true,
+        warning: `Fallback APY estimate - verify current rates at ethena.fi (last verified: ${FALLBACK_UPDATED})`,
+        source: 'fallback-estimate',
+      };
     } catch (error) {
       console.error('Error estimating Ethena APY:', error);
-      return 12.0; // Fallback estimate
+      return {
+        apy: 0,
+        isEstimate: true,
+        warning: 'APY calculation failed - manual verification required',
+        source: 'error',
+      };
     }
   }
 

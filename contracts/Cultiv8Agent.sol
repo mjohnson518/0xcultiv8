@@ -14,7 +14,8 @@ import "./interfaces/IEIP8004Agent.sol";
  * - On-chain authorization with revocable permissions
  * - Per-transaction and daily spending limits
  * - Protocol whitelist for security
- * - Full execution history on-chain
+ * - Function selector whitelist (defense-in-depth)
+ * - Event-based execution history (gas efficient, index off-chain)
  * - Instant revocation capability
  * 
  * Security:
@@ -27,12 +28,17 @@ contract Cultiv8Agent is IEIP8004Agent, Ownable, ReentrancyGuard {
     
     /// @notice User authorizations mapping
     mapping(address => AgentAuthorization) public authorizations;
-    
-    /// @notice Execution history for transparency
-    ExecutionRecord[] public executionHistory;
-    
+
     /// @notice Whitelisted protocols the agent can interact with
     mapping(address => bool) public whitelistedProtocols;
+
+    /// @notice Allowed function selectors per protocol (protocol => selector => allowed)
+    /// @dev SECURITY: Prevents arbitrary calldata execution - only whitelisted operations permitted
+    mapping(address => mapping(bytes4 => bool)) public allowedSelectors;
+
+    /// @notice Total executions counter (gas efficient, replaces unbounded array)
+    /// @dev Full execution details available via AgentExecuted events - index off-chain
+    uint256 public totalExecutions;
     
     /// @notice Emergency pause state
     bool public paused;
@@ -53,6 +59,9 @@ contract Cultiv8Agent is IEIP8004Agent, Ownable, ReentrancyGuard {
 
     /// @notice Emitted when authorized vault is updated
     event AuthorizedVaultUpdated(address indexed oldVault, address indexed newVault);
+
+    /// @notice Emitted when a function selector is whitelisted for a protocol
+    event SelectorWhitelisted(address indexed protocol, bytes4 indexed selector, bool allowed);
 
     constructor() Ownable(msg.sender) {}
 
@@ -124,7 +133,13 @@ contract Cultiv8Agent is IEIP8004Agent, Ownable, ReentrancyGuard {
         require(amount > 0, "Amount must be positive");
         require(amount <= auth.maxAmountPerTx, "Exceeds per-transaction limit");
         require(whitelistedProtocols[protocol], "Protocol not whitelisted");
-        
+        require(strategyData.length >= 4, "Invalid calldata");
+
+        // SECURITY: Extract and validate function selector against whitelist
+        // Prevents arbitrary calldata execution even on whitelisted protocols
+        bytes4 selector = bytes4(strategyData[:4]);
+        require(allowedSelectors[protocol][selector], "Function not whitelisted");
+
         // Check and update daily limit using block numbers (prevents timestamp manipulation)
         uint256 currentDay = block.number / BLOCKS_PER_DAY;
         if (currentDay > auth.lastResetDay) {
@@ -134,23 +149,17 @@ contract Cultiv8Agent is IEIP8004Agent, Ownable, ReentrancyGuard {
 
         require(auth.dailySpent + amount <= auth.dailyLimit, "Exceeds daily limit");
         auth.dailySpent += amount;
-        
+
         // Execute strategy via low-level call
         bytes32 strategyHash = keccak256(strategyData);
         (success, ) = protocol.call(strategyData);
-        
-        // Record execution
-        executionHistory.push(ExecutionRecord({
-            user: user,
-            protocol: protocol,
-            amount: amount,
-            strategyHash: strategyHash,
-            timestamp: block.timestamp,
-            success: success
-        }));
-        
+
+        // Increment execution counter (gas efficient, replaces unbounded array)
+        // Full execution details are indexed from AgentExecuted events
+        unchecked { totalExecutions++; }
+
         emit AgentExecuted(user, protocol, amount, strategyHash, success);
-        
+
         require(success, "Strategy execution failed");
         return success;
     }
@@ -215,11 +224,60 @@ contract Cultiv8Agent is IEIP8004Agent, Ownable, ReentrancyGuard {
     }
     
     /**
-     * @notice Get execution history length
-     * @return Number of recorded executions
+     * @notice Get total execution count
+     * @dev Full execution history is available via AgentExecuted events (index off-chain)
+     * @return Number of executions performed
      */
     function getExecutionHistoryLength() external view returns (uint256) {
-        return executionHistory.length;
+        return totalExecutions;
+    }
+
+    /**
+     * @notice Whitelist a function selector for a protocol
+     * @dev SECURITY: Only whitelisted selectors can be called via executeStrategy
+     * @param protocol Protocol address
+     * @param selector Function selector (first 4 bytes of keccak256 of signature)
+     * @param allowed true to allow, false to disallow
+     */
+    function setSelectorWhitelist(
+        address protocol,
+        bytes4 selector,
+        bool allowed
+    ) external onlyOwner {
+        require(protocol != address(0), "Invalid protocol address");
+        require(selector != bytes4(0), "Invalid selector");
+        allowedSelectors[protocol][selector] = allowed;
+        emit SelectorWhitelisted(protocol, selector, allowed);
+    }
+
+    /**
+     * @notice Batch whitelist function selectors for a protocol
+     * @param protocol Protocol address
+     * @param selectors Array of function selectors
+     * @param statuses Array of allowed statuses
+     */
+    function batchSetSelectorWhitelist(
+        address protocol,
+        bytes4[] calldata selectors,
+        bool[] calldata statuses
+    ) external onlyOwner {
+        require(protocol != address(0), "Invalid protocol address");
+        require(selectors.length == statuses.length, "Length mismatch");
+        for (uint256 i = 0; i < selectors.length; i++) {
+            require(selectors[i] != bytes4(0), "Invalid selector");
+            allowedSelectors[protocol][selectors[i]] = statuses[i];
+            emit SelectorWhitelisted(protocol, selectors[i], statuses[i]);
+        }
+    }
+
+    /**
+     * @notice Check if a function selector is allowed for a protocol
+     * @param protocol Protocol address
+     * @param selector Function selector
+     * @return Whether the selector is whitelisted
+     */
+    function isSelectorAllowed(address protocol, bytes4 selector) external view returns (bool) {
+        return allowedSelectors[protocol][selector];
     }
     
     /**
@@ -260,16 +318,19 @@ contract Cultiv8Agent is IEIP8004Agent, Ownable, ReentrancyGuard {
     /**
      * @notice Record spending from authorized vault (for EIP-7702 delegated execution)
      * @dev Only callable by the authorized vault contract
+     * SECURITY: Validates both vault caller AND agent authorization for defense-in-depth
      * @param user User whose spending to record
      * @param protocol Target protocol (for event logging)
      * @param amount Amount spent
      * @param strategyHash Hash of the executed strategy data
+     * @param executingAgent The agent that initiated the vault call (validated by vault, verified here)
      */
     function recordSpending(
         address user,
         address protocol,
         uint256 amount,
-        bytes32 strategyHash
+        bytes32 strategyHash,
+        address executingAgent
     ) external nonReentrant {
         require(!paused, "Contract is paused");
         require(msg.sender == authorizedVault, "Only authorized vault");
@@ -277,8 +338,10 @@ contract Cultiv8Agent is IEIP8004Agent, Ownable, ReentrancyGuard {
 
         AgentAuthorization storage auth = authorizations[user];
 
-        // Verify authorization is active
+        // SECURITY: Verify authorization is active AND the executing agent matches
+        // Defense-in-depth: vault validates this too, but we double-check
         require(auth.active, "Agent not authorized");
+        require(auth.agent == executingAgent, "Agent mismatch");
         require(amount > 0, "Amount must be positive");
         require(amount <= auth.maxAmountPerTx, "Exceeds per-transaction limit");
         require(whitelistedProtocols[protocol], "Protocol not whitelisted");
@@ -293,15 +356,9 @@ contract Cultiv8Agent is IEIP8004Agent, Ownable, ReentrancyGuard {
         require(auth.dailySpent + amount <= auth.dailyLimit, "Exceeds daily limit");
         auth.dailySpent += amount;
 
-        // Record execution for transparency
-        executionHistory.push(ExecutionRecord({
-            user: user,
-            protocol: protocol,
-            amount: amount,
-            strategyHash: strategyHash,
-            timestamp: block.timestamp,
-            success: true
-        }));
+        // Increment execution counter (gas efficient, replaces unbounded array)
+        // Full execution details are indexed from AgentExecuted events
+        unchecked { totalExecutions++; }
 
         emit AgentExecuted(user, protocol, amount, strategyHash, true);
     }

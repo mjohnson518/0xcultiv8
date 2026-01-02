@@ -133,16 +133,19 @@ export class SafetyController {
 
   /**
    * Check protocol whitelist
+   * NOTE: This must include ALL protocols with active adapters
    */
   async checkProtocolWhitelist(strategy) {
-    // Get whitelisted protocols from config
-    const whitelisted = ['aave', 'compound']; // In production, fetch from database
+    // SECURITY: Must match all available protocol adapters
+    // Active adapters: AaveV3Adapter, CompoundV3Adapter, MorphoBlueAdapter, EthenaAdapter
+    const whitelisted = ['aave', 'compound', 'morpho', 'ethena'];
 
     if (!whitelisted.includes(strategy.protocol.toLowerCase())) {
       return {
         type: 'PROTOCOL_NOT_WHITELISTED',
         severity: 'high',
         protocol: strategy.protocol,
+        whitelistedProtocols: whitelisted,
         message: `Protocol ${strategy.protocol} is not whitelisted`,
       };
     }
@@ -241,17 +244,72 @@ export class SafetyController {
 
   /**
    * Get recent investments
+   * SECURITY: Validates timeframe against allowlist to prevent SQL injection
    */
   async getRecentInvestments(protocol, blockchain, timeframe) {
+    // SECURITY: Whitelist allowed timeframe values to prevent SQL injection
+    const allowedTimeframes = ['1 hour', '6 hours', '24 hours', '7 days', '30 days'];
+    const safeTimeframe = allowedTimeframes.includes(timeframe) ? timeframe : '1 hour';
+
     try {
-      const result = await sql`
-        SELECT i.* FROM investments i
-        LEFT JOIN cultiv8_opportunities o ON i.opportunity_id = o.id
-        WHERE o.protocol_name ILIKE ${protocol}
-          AND i.blockchain = ${blockchain}
-          AND i.invested_at > NOW() - INTERVAL '${timeframe}'
-        ORDER BY i.invested_at DESC
-      `;
+      // Use separate query based on validated timeframe
+      // Note: sql`` tagged templates handle parameters safely, but INTERVAL literals
+      // cannot be parameterized directly in most SQL engines
+      let result;
+      switch (safeTimeframe) {
+        case '1 hour':
+          result = await sql`
+            SELECT i.* FROM investments i
+            LEFT JOIN cultiv8_opportunities o ON i.opportunity_id = o.id
+            WHERE o.protocol_name ILIKE ${protocol}
+              AND i.blockchain = ${blockchain}
+              AND i.invested_at > NOW() - INTERVAL '1 hour'
+            ORDER BY i.invested_at DESC
+          `;
+          break;
+        case '6 hours':
+          result = await sql`
+            SELECT i.* FROM investments i
+            LEFT JOIN cultiv8_opportunities o ON i.opportunity_id = o.id
+            WHERE o.protocol_name ILIKE ${protocol}
+              AND i.blockchain = ${blockchain}
+              AND i.invested_at > NOW() - INTERVAL '6 hours'
+            ORDER BY i.invested_at DESC
+          `;
+          break;
+        case '24 hours':
+          result = await sql`
+            SELECT i.* FROM investments i
+            LEFT JOIN cultiv8_opportunities o ON i.opportunity_id = o.id
+            WHERE o.protocol_name ILIKE ${protocol}
+              AND i.blockchain = ${blockchain}
+              AND i.invested_at > NOW() - INTERVAL '24 hours'
+            ORDER BY i.invested_at DESC
+          `;
+          break;
+        case '7 days':
+          result = await sql`
+            SELECT i.* FROM investments i
+            LEFT JOIN cultiv8_opportunities o ON i.opportunity_id = o.id
+            WHERE o.protocol_name ILIKE ${protocol}
+              AND i.blockchain = ${blockchain}
+              AND i.invested_at > NOW() - INTERVAL '7 days'
+            ORDER BY i.invested_at DESC
+          `;
+          break;
+        case '30 days':
+          result = await sql`
+            SELECT i.* FROM investments i
+            LEFT JOIN cultiv8_opportunities o ON i.opportunity_id = o.id
+            WHERE o.protocol_name ILIKE ${protocol}
+              AND i.blockchain = ${blockchain}
+              AND i.invested_at > NOW() - INTERVAL '30 days'
+            ORDER BY i.invested_at DESC
+          `;
+          break;
+        default:
+          result = [];
+      }
 
       return result || [];
     } catch (error) {

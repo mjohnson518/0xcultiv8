@@ -102,7 +102,12 @@ async function createInvestmentAtomic(investmentData, opportunity) {
 }
 
 // Get all investments with filtering
+// SECURITY: Authentication required to view investment data
 export async function GET(request) {
+  // Authentication required - prevents unauthorized access to investment data
+  const authError = await authMiddleware(request);
+  if (authError) return authError;
+
   // Rate limiting - general tier for read operations
   const rateLimitError = await rateLimitMiddleware(request, 'general');
   if (rateLimitError) return rateLimitError;

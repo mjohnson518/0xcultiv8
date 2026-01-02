@@ -22,7 +22,12 @@ async function ensureLedger() {
   }
 }
 
+// SECURITY: Admin authentication required to view fund balances
 export async function GET(request) {
+  // Admin authentication required - fund balances are sensitive data
+  const adminError = await requireAdmin(request);
+  if (adminError) return adminError;
+
   // Rate limiting - general tier for read operations
   const rateLimitError = await rateLimitMiddleware(request, 'general');
   if (rateLimitError) return rateLimitError;

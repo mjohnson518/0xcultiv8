@@ -9,6 +9,18 @@ describe("Cultiv8Agent - EIP-8004 Compliance", function () {
   const USDC_DECIMALS = 6;
   const toUSDC = (amount) => ethers.parseUnits(amount.toString(), USDC_DECIMALS);
 
+  // Valid 4-byte function selectors for testing
+  // Using realistic DeFi function selectors
+  const TEST_SELECTOR_1 = "0xa9059cbb"; // transfer(address,uint256)
+  const TEST_SELECTOR_2 = "0x23b872dd"; // transferFrom(address,address,uint256)
+  const TEST_SELECTOR_3 = "0x095ea7b3"; // approve(address,uint256)
+  const TEST_SELECTOR_4 = "0x70a08231"; // balanceOf(address)
+  const TEST_SELECTOR_5 = "0xdd62ed3e"; // allowance(address,address)
+  const TEST_SELECTOR_6 = "0x18160ddd"; // totalSupply()
+
+  // Create valid calldata with 4-byte selector + padding
+  const makeCalldata = (selector) => selector + "0".repeat(56); // 4 bytes + 28 bytes padding = 32 bytes
+
   beforeEach(async function () {
     [owner, user, unauthorizedAgent, protocol] = await ethers.getSigners();
 
@@ -20,6 +32,14 @@ describe("Cultiv8Agent - EIP-8004 Compliance", function () {
 
     // Whitelist test protocol
     await agent.setProtocolWhitelist(protocol.address, true);
+
+    // Whitelist test selectors for the protocol
+    await agent.setSelectorWhitelist(protocol.address, TEST_SELECTOR_1, true);
+    await agent.setSelectorWhitelist(protocol.address, TEST_SELECTOR_2, true);
+    await agent.setSelectorWhitelist(protocol.address, TEST_SELECTOR_3, true);
+    await agent.setSelectorWhitelist(protocol.address, TEST_SELECTOR_4, true);
+    await agent.setSelectorWhitelist(protocol.address, TEST_SELECTOR_5, true);
+    await agent.setSelectorWhitelist(protocol.address, TEST_SELECTOR_6, true);
   });
 
   describe("Authorization", function () {
@@ -104,7 +124,7 @@ describe("Cultiv8Agent - EIP-8004 Compliance", function () {
     });
 
     it("Should allow authorized agent to execute strategy", async function () {
-      const strategyData = "0x1234"; // Mock strategy calldata
+      const strategyData = makeCalldata(TEST_SELECTOR_1); // Valid calldata with whitelisted selector
       const amount = toUSDC(500);
 
       await expect(
@@ -126,7 +146,7 @@ describe("Cultiv8Agent - EIP-8004 Compliance", function () {
         agent.connect(unauthorizedAgent).executeStrategy(
           user.address,
           protocol.address,
-          "0x1234",
+          makeCalldata(TEST_SELECTOR_1),
           toUSDC(500)
         )
       ).to.be.revertedWith("Unauthorized agent");
@@ -137,7 +157,7 @@ describe("Cultiv8Agent - EIP-8004 Compliance", function () {
         agent.connect(owner).executeStrategy(
           user.address,
           protocol.address,
-          "0x1234",
+          makeCalldata(TEST_SELECTOR_1),
           toUSDC(2000) // Exceeds maxAmountPerTx of $1000
         )
       ).to.be.revertedWith("Exceeds per-transaction limit");
@@ -148,35 +168,35 @@ describe("Cultiv8Agent - EIP-8004 Compliance", function () {
       await agent.connect(owner).executeStrategy(
         user.address,
         protocol.address,
-        "0x1234",
+        makeCalldata(TEST_SELECTOR_1),
         toUSDC(1000)
       );
 
       await agent.connect(owner).executeStrategy(
         user.address,
         protocol.address,
-        "0x5678",
+        makeCalldata(TEST_SELECTOR_2),
         toUSDC(1000)
       );
 
       await agent.connect(owner).executeStrategy(
         user.address,
         protocol.address,
-        "0x9abc",
+        makeCalldata(TEST_SELECTOR_3),
         toUSDC(1000)
       );
 
       await agent.connect(owner).executeStrategy(
         user.address,
         protocol.address,
-        "0xabcd",
+        makeCalldata(TEST_SELECTOR_4),
         toUSDC(800)
       );
 
       await agent.connect(owner).executeStrategy(
         user.address,
         protocol.address,
-        "0xbcde",
+        makeCalldata(TEST_SELECTOR_5),
         toUSDC(1000)
       );
 
@@ -189,7 +209,7 @@ describe("Cultiv8Agent - EIP-8004 Compliance", function () {
         agent.connect(owner).executeStrategy(
           user.address,
           protocol.address,
-          "0xdef0",
+          makeCalldata(TEST_SELECTOR_6),
           toUSDC(500)
         )
       ).to.be.revertedWith("Exceeds daily limit");
@@ -200,7 +220,7 @@ describe("Cultiv8Agent - EIP-8004 Compliance", function () {
       await agent.connect(owner).executeStrategy(
         user.address,
         protocol.address,
-        "0x1234",
+        makeCalldata(TEST_SELECTOR_1),
         toUSDC(1000)
       );
 
@@ -214,7 +234,7 @@ describe("Cultiv8Agent - EIP-8004 Compliance", function () {
       await agent.connect(owner).executeStrategy(
         user.address,
         protocol.address,
-        "0x5678",
+        makeCalldata(TEST_SELECTOR_2),
         toUSDC(1000)
       );
 
@@ -229,7 +249,7 @@ describe("Cultiv8Agent - EIP-8004 Compliance", function () {
         agent.connect(owner).executeStrategy(
           user.address,
           nonWhitelisted,
-          "0x1234",
+          makeCalldata(TEST_SELECTOR_1),
           toUSDC(500)
         )
       ).to.be.revertedWith("Protocol not whitelisted");
@@ -242,30 +262,47 @@ describe("Cultiv8Agent - EIP-8004 Compliance", function () {
         agent.connect(owner).executeStrategy(
           user.address,
           protocol.address,
-          "0x1234",
+          makeCalldata(TEST_SELECTOR_1),
           toUSDC(500)
         )
       ).to.be.revertedWith("Contract is paused");
     });
 
-    it("Should record execution history", async function () {
-      const initialLength = await agent.getExecutionHistoryLength();
+    it("Should reject non-whitelisted selector", async function () {
+      const nonWhitelistedSelector = "0x12345678"; // Not whitelisted
+      await expect(
+        agent.connect(owner).executeStrategy(
+          user.address,
+          protocol.address,
+          makeCalldata(nonWhitelistedSelector),
+          toUSDC(500)
+        )
+      ).to.be.revertedWith("Function not whitelisted");
+    });
+
+    it("Should increment execution counter", async function () {
+      const initialCount = await agent.getExecutionHistoryLength();
 
       await agent.connect(owner).executeStrategy(
         user.address,
         protocol.address,
-        "0x1234",
+        makeCalldata(TEST_SELECTOR_1),
         toUSDC(500)
       );
 
-      const newLength = await agent.getExecutionHistoryLength();
-      expect(newLength).to.equal(initialLength + 1n);
+      const newCount = await agent.getExecutionHistoryLength();
+      expect(newCount).to.equal(initialCount + 1n);
 
-      const record = await agent.executionHistory(initialLength);
-      expect(record.user).to.equal(user.address);
-      expect(record.protocol).to.equal(protocol.address);
-      expect(record.amount).to.equal(toUSDC(500));
-      expect(record.success).to.be.true;
+      // Execute another
+      await agent.connect(owner).executeStrategy(
+        user.address,
+        protocol.address,
+        makeCalldata(TEST_SELECTOR_2),
+        toUSDC(300)
+      );
+
+      const finalCount = await agent.getExecutionHistoryLength();
+      expect(finalCount).to.equal(initialCount + 2n);
     });
   });
 
@@ -298,7 +335,7 @@ describe("Cultiv8Agent - EIP-8004 Compliance", function () {
         agent.connect(owner).executeStrategy(
           user.address,
           protocol.address,
-          "0x1234",
+          makeCalldata(TEST_SELECTOR_1),
           toUSDC(500)
         )
       ).to.be.revertedWith("Agent not authorized");
@@ -330,7 +367,7 @@ describe("Cultiv8Agent - EIP-8004 Compliance", function () {
       await agent.connect(owner).executeStrategy(
         user.address,
         protocol.address,
-        "0x1234",
+        makeCalldata(TEST_SELECTOR_1),
         toUSDC(500)
       );
 
@@ -417,7 +454,7 @@ describe("Cultiv8Agent - EIP-8004 Compliance", function () {
       await agent.connect(owner).executeStrategy(
         user.address,
         protocol.address,
-        "0x1234",
+        makeCalldata(TEST_SELECTOR_1),
         toUSDC(800) // Within $1000 per-tx limit
       );
 

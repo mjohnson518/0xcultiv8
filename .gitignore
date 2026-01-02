@@ -105,3 +105,13 @@ PHASE8_BASELINE.md
 PROGRESS.md
 
 .claude/
+
+# Ralph Loop / Audit artifacts (DO NOT COMMIT)
+AUDIT_REPORT.md
+PROGRESS.md
+GIT_COMMANDS.md
+BLOCKERS.md
+.claude/
+ralph-loop.sh
+CLAUDE.md
+contracts/SECURITY_AUDIT_CHECKLIST.md

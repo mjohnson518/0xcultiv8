@@ -10,7 +10,67 @@ import { invokeLangChainWithRetry, withLLMFallback } from '../../utils/llmRetry.
  *
  * SECURITY: All LLM calls use retry logic with exponential backoff
  * and fallback to alternative providers for resilience.
+ * SECURITY: User inputs are sanitized to prevent prompt injection attacks.
  */
+
+/**
+ * SECURITY: Sanitize user-controlled strings before including in prompts
+ * Prevents prompt injection attacks where malicious inputs try to override instructions
+ * @param {string} input - User-controlled input
+ * @param {number} maxLength - Maximum allowed length (default 500)
+ * @returns {string} - Sanitized input safe for prompt inclusion
+ */
+function sanitizeForPrompt(input, maxLength = 500) {
+  if (input === null || input === undefined) return '';
+
+  // Convert to string and trim
+  let sanitized = String(input).trim();
+
+  // Truncate to max length to prevent payload attacks
+  if (sanitized.length > maxLength) {
+    sanitized = sanitized.slice(0, maxLength) + '...[truncated]';
+    log.warn('Prompt input truncated', { originalLength: String(input).length, maxLength });
+  }
+
+  // Remove potential prompt override patterns (common injection attempts)
+  // These patterns try to break out of the data context and inject new instructions
+  const injectionPatterns = [
+    /\bignore\s+(all\s+)?previous\s+instructions?\b/gi,
+    /\bforget\s+(all\s+)?(your\s+)?instructions?\b/gi,
+    /\bnew\s+instructions?\s*:/gi,
+    /\bsystem\s*:/gi,
+    /\bassistant\s*:/gi,
+    /\bhuman\s*:/gi,
+    /\buser\s*:/gi,
+    /<\|.*?\|>/g, // Common delimiter injection
+    /\[\[.*?\]\]/g, // Bracket delimiter injection
+  ];
+
+  for (const pattern of injectionPatterns) {
+    sanitized = sanitized.replace(pattern, '[FILTERED]');
+  }
+
+  // Escape backticks and other markdown that could affect parsing
+  sanitized = sanitized
+    .replace(/```/g, '\\`\\`\\`')
+    .replace(/\n{3,}/g, '\n\n'); // Collapse excessive newlines
+
+  return sanitized;
+}
+
+/**
+ * SECURITY: Sanitize numeric values to prevent NaN/Infinity injection
+ * @param {number} value - Numeric value to sanitize
+ * @param {number} defaultValue - Default if invalid (default 0)
+ * @param {number} min - Minimum allowed value
+ * @param {number} max - Maximum allowed value
+ * @returns {number} - Safe numeric value
+ */
+function sanitizeNumber(value, defaultValue = 0, min = 0, max = Number.MAX_SAFE_INTEGER) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return defaultValue;
+  return Math.max(min, Math.min(max, num));
+}
 
 /**
  * Node 1: Analyze Market
@@ -51,22 +111,45 @@ export async function analyzeMarket(state) {
       apiKey: process.env.ANTHROPIC_API_KEY,
     });
 
+    // SECURITY: Sanitize all user-controlled inputs to prevent prompt injection
+    const sanitizedFunds = sanitizeNumber(state.availableFunds, 0, 0, 10000000);
+    const sanitizedRisk = sanitizeNumber(state.riskTolerance, 5, 1, 10);
+    const sanitizedMaxPerOpp = sanitizeNumber(state.maxInvestmentPerOpp, 0, 0, 10000000);
+    const positionCount = sanitizeNumber(state.currentPositions?.length, 0, 0, 100);
+
+    // SECURITY: Sanitize position data (user could inject via blockchain/amount fields)
+    const sanitizedPositions = state.currentPositions?.slice(0, 20)?.map(p => {
+      const blockchain = sanitizeForPrompt(p.blockchain, 50);
+      const amount = sanitizeNumber(p.amount, 0, 0, 10000000);
+      const expectedApy = sanitizeNumber(p.expected_apy, 0, 0, 1000);
+      return `  - ${blockchain}: $${amount} at ${expectedApy}% APY`;
+    }).join('\n') || '  None';
+
+    // SECURITY: Sanitize opportunity data (protocol names from external sources)
+    const sanitizedOpportunities = allOpportunities.slice(0, 20).map(o => {
+      const protocol = sanitizeForPrompt(o.protocol, 50);
+      const chain = sanitizeForPrompt(o.chain, 20);
+      const apy = sanitizeNumber(o.apy, 0, 0, 1000);
+      const tvlM = sanitizeNumber(o.tvl / 1e6, 0, 0, 100000);
+      return `  - ${protocol} (${chain}): ${apy}% APY, TVL: $${tvlM.toFixed(1)}M`;
+    }).join('\n');
+
     const prompt = `You are a DeFi yield farming strategist analyzing investment opportunities.
 
 Current Portfolio:
-- Available Funds: $${state.availableFunds}
-- Risk Tolerance: ${state.riskTolerance}/10
-- Max Per Opportunity: $${state.maxInvestmentPerOpp}
-- Active Positions: ${state.currentPositions?.length || 0}
+- Available Funds: $${sanitizedFunds}
+- Risk Tolerance: ${sanitizedRisk}/10
+- Max Per Opportunity: $${sanitizedMaxPerOpp}
+- Active Positions: ${positionCount}
 
 Active Positions:
-${state.currentPositions?.map(p => `  - ${p.blockchain}: $${p.amount} at ${p.expected_apy}% APY`).join('\n') || '  None'}
+${sanitizedPositions}
 
 Available Opportunities:
-${allOpportunities.map(o => `  - ${o.protocol} (${o.chain}): ${o.apy}% APY, TVL: $${(o.tvl / 1e6).toFixed(1)}M`).join('\n')}
+${sanitizedOpportunities}
 
 Provide a strategic analysis covering:
-1. Best opportunities given risk tolerance of ${state.riskTolerance}/10
+1. Best opportunities given risk tolerance of ${sanitizedRisk}/10
 2. Whether rebalancing is needed from current positions
 3. Key risks to consider
 4. Recommended allocation strategy
@@ -133,9 +216,16 @@ export async function generateStrategies(state) {
       apiKey: process.env.ANTHROPIC_API_KEY,
     });
 
+    // SECURITY: Sanitize inputs even though analysis is from previous LLM step
+    // Defense-in-depth: prevents any manipulation through the chain
+    const sanitizedAnalysis = sanitizeForPrompt(state.analysis, 5000);
+    const sanitizedFunds = sanitizeNumber(state.availableFunds, 0, 0, 10000000);
+    const sanitizedMaxPerOpp = sanitizeNumber(state.maxInvestmentPerOpp, 0, 0, 10000000);
+    const sanitizedRisk = sanitizeNumber(state.riskTolerance, 5, 1, 10);
+
     const prompt = `Based on this market analysis:
 
-${state.analysis}
+${sanitizedAnalysis}
 
 Generate 3-5 specific investment strategies as a JSON array. Each strategy should include:
 {
@@ -149,9 +239,9 @@ Generate 3-5 specific investment strategies as a JSON array. Each strategy shoul
   "confidence": 0-1
 }
 
-Available funds: $${state.availableFunds}
-Max per opportunity: $${state.maxInvestmentPerOpp}
-Risk tolerance: ${state.riskTolerance}/10
+Available funds: $${sanitizedFunds}
+Max per opportunity: $${sanitizedMaxPerOpp}
+Risk tolerance: ${sanitizedRisk}/10
 
 Return ONLY valid JSON array, no other text.`;
 
@@ -322,13 +412,29 @@ export async function buildExecutionPlan(state) {
       apiKey: process.env.OPENAI_API_KEY,
     });
 
+    // SECURITY: Sanitize strategy object before JSON serialization
+    // Prevent injection through strategy fields set in previous steps
+    const sanitizedStrategy = {
+      protocol: sanitizeForPrompt(state.selectedStrategy.protocol, 50),
+      blockchain: sanitizeForPrompt(state.selectedStrategy.blockchain, 20),
+      action: sanitizeForPrompt(state.selectedStrategy.action, 20),
+      amount: sanitizeNumber(state.selectedStrategy.amount, 0, 0, 10000000),
+      expectedAPY: sanitizeNumber(state.selectedStrategy.expectedAPY, 0, 0, 1000),
+      riskScore: sanitizeNumber(state.selectedStrategy.riskScore, 5, 1, 10),
+      rationale: sanitizeForPrompt(state.selectedStrategy.rationale, 500),
+      confidence: sanitizeNumber(state.selectedStrategy.confidence, 0.5, 0, 1),
+    };
+
+    const sanitizedGasPrice = sanitizeForPrompt(state.gasPrice?.maxFeePerGas, 50) || 'unknown';
+    const sanitizedFunds = sanitizeNumber(state.availableFunds, 0, 0, 10000000);
+
     const prompt = `Create a detailed execution plan for this DeFi strategy:
 
 Strategy:
-${JSON.stringify(state.selectedStrategy, null, 2)}
+${JSON.stringify(sanitizedStrategy, null, 2)}
 
-Current Gas Price: ${state.gasPrice?.maxFeePerGas || 'unknown'}
-Available Funds: $${state.availableFunds}
+Current Gas Price: ${sanitizedGasPrice}
+Available Funds: $${sanitizedFunds}
 
 Create an execution plan including:
 1. Transaction sequence (approvals, deposits, etc.)

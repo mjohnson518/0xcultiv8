@@ -128,10 +128,15 @@ contract AgentVault is IEIP7702Vault, Ownable, ReentrancyGuard {
         (bool success, bytes memory returnData) = target.call(data);
         require(success, "Delegated call failed");
 
+        // SECURITY: Decrement user balance to prevent double-spending
+        // This ensures internal accounting matches actual fund availability
+        balances[user] -= amount;
+
         // SECURITY: Record spending in Cultiv8Agent to enforce daily limits
         // This MUST happen after successful execution to prevent limit bypass
+        // Pass msg.sender as executingAgent for defense-in-depth validation
         bytes32 strategyHash = keccak256(data);
-        cultiv8Agent.recordSpending(user, target, amount, strategyHash);
+        cultiv8Agent.recordSpending(user, target, amount, strategyHash, msg.sender);
 
         emit Delegated(user, target, data);
         return returnData;

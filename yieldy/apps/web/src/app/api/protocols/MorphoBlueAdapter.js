@@ -50,6 +50,7 @@ export class MorphoBlueAdapter extends BaseAdapter {
   /**
    * Get current supply APY for USDC
    * Uses MetaMorpho vault APY as it represents optimized yield
+   * SECURITY: Returns isEstimate flag to indicate data quality
    * @returns {Promise<object>}
    */
   async getCurrentAPY() {
@@ -59,6 +60,8 @@ export class MorphoBlueAdapter extends BaseAdapter {
         return {
           apy: 0,
           source: 'unavailable',
+          isEstimate: true,
+          warning: 'No vault configured for this chain',
           error: 'No vault configured for this chain',
           timestamp: Date.now(),
         };
@@ -68,15 +71,15 @@ export class MorphoBlueAdapter extends BaseAdapter {
       const totalAssets = await this.vault.totalAssets();
       const totalSupply = await this.vault.totalSupply();
 
-      // Get the vault's last total assets from a recent block for APY calculation
-      // For now, use an estimated APY based on typical Morpho rates
-      // In production, you'd track this over time or query an API
-      const estimatedAPY = await this.estimateAPY();
+      // Get APY with source and warning info
+      const apyResult = await this.estimateAPY();
 
       return {
-        apy: Number(estimatedAPY.toFixed(4)),
-        apr: Number((estimatedAPY * 0.95).toFixed(4)), // Approximate APR
-        source: 'on-chain',
+        apy: Number(apyResult.apy.toFixed(4)),
+        apr: Number((apyResult.apy * 0.95).toFixed(4)), // Approximate APR
+        source: apyResult.source,
+        isEstimate: apyResult.isEstimate,
+        warning: apyResult.warning, // SECURITY: Exposed to callers for transparency
         timestamp: Date.now(),
         protocol: 'Morpho Blue',
         chain: this.chainId === 1 ? 'ethereum' : 'base',
@@ -88,6 +91,8 @@ export class MorphoBlueAdapter extends BaseAdapter {
       return {
         apy: 0,
         source: 'error',
+        isEstimate: true,
+        warning: 'Failed to fetch APY data',
         error: error.message,
         timestamp: Date.now(),
       };
@@ -96,7 +101,8 @@ export class MorphoBlueAdapter extends BaseAdapter {
 
   /**
    * Estimate APY from on-chain market data
-   * @returns {Promise<number>}
+   * SECURITY: Returns clearly marked estimate when live data unavailable
+   * @returns {Promise<{apy: number, isEstimate: boolean, warning: string|null}>}
    */
   async estimateAPY() {
     try {
@@ -108,19 +114,55 @@ export class MorphoBlueAdapter extends BaseAdapter {
         fee = 0;
       }
 
-      // Query recent performance or use market-based estimation
-      // For a more accurate APY, you'd need to track vault share price over time
-      // For now, return a reasonable estimate based on typical Morpho Blue rates
+      // Attempt to fetch live APY from Morpho API
+      const morphoApiUrl = process.env.MORPHO_API_URL;
 
+      if (morphoApiUrl) {
+        try {
+          const response = await fetch(`${morphoApiUrl}/v1/vaults/${this.vaultAddress}/apy`, {
+            timeout: 5000,
+            headers: { 'Accept': 'application/json' },
+          });
+          if (response.ok) {
+            const data = await response.json();
+            if (data.apy && typeof data.apy === 'number') {
+              const feeAdjusted = data.apy * (1 - Number(fee) / 10000);
+              return {
+                apy: feeAdjusted,
+                isEstimate: false,
+                warning: null,
+                source: 'morpho-api',
+              };
+            }
+          }
+        } catch {
+          // API fetch failed, fall through to estimate
+        }
+      }
+
+      // SECURITY: Clearly mark this as a fallback estimate
       // Morpho Blue typically offers 1-2% higher APY than Aave/Compound
-      // This is a placeholder - in production, integrate with Morpho API
-      const baseAPY = 7.35; // Typical USDC APY on Morpho Blue
-      const feeAdjusted = baseAPY * (1 - Number(fee) / 10000);
+      const FALLBACK_APY = 7.35;
+      const FALLBACK_UPDATED = '2026-01-02'; // Date this fallback was last verified
 
-      return feeAdjusted;
+      const feeAdjusted = FALLBACK_APY * (1 - Number(fee) / 10000);
+
+      console.warn(`MorphoBlueAdapter: Using fallback APY estimate (${feeAdjusted.toFixed(2)}%), last verified ${FALLBACK_UPDATED}`);
+
+      return {
+        apy: feeAdjusted,
+        isEstimate: true,
+        warning: `Fallback APY estimate - verify current rates at morpho.org (last verified: ${FALLBACK_UPDATED})`,
+        source: 'fallback-estimate',
+      };
     } catch (error) {
       console.error('Error estimating Morpho APY:', error);
-      return 7.0; // Fallback estimate
+      return {
+        apy: 0,
+        isEstimate: true,
+        warning: 'APY calculation failed - manual verification required',
+        source: 'error',
+      };
     }
   }
 

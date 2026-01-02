@@ -115,3 +115,5 @@ BLOCKERS.md
 ralph-loop.sh
 CLAUDE.md
 contracts/SECURITY_AUDIT_CHECKLIST.md
+contracts/artifacts/
+contracts/cache/
